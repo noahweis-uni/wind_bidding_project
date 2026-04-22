@@ -1,0 +1,31 @@
+__pycache__/
+.ipynb_checkpoints/
+.venv/
+env/
+venv/
+*.pyc
+*.pyo
+.DS_Store
+
+# Rohdaten lokal behalten – nicht ins Repo
+data/raw/*.xlsx
+data/raw/*.csv
+data/processed/*.csv
+data/interim/*.csv
+
+# Behalte Ordnerstruktur
+!data/**/.gitkeep
+!results/**/.gitkeep
+
+# Modell-Artefakte
+*.pkl
+*.joblib
+*.h5
+*.pt
+
+# Ergebnisse nicht versionieren (optional entfernen)
+results/figures/*
+results/tables/*
+results/forecasts/*
+results/bidding/*
+!results/**/.gitkeep
