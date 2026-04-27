@@ -21,6 +21,10 @@ def mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return np.mean(np.abs(y_true - y_pred))
 
 
+def bias(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    return np.mean(y_pred - y_true)
+
+
 def mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     mask = y_true != 0
     return np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask])) * 100
