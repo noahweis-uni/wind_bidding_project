@@ -15,13 +15,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import joblib
 
-<<<<<<< HEAD
 from src.models import (linear_regression, random_forest, neural_net,
                         quantile_regression, persistence_model,
                         quantile_regression_forest)
-=======
-from src.models import linear_regression, random_forest, neural_net, quantile_regression
->>>>>>> origin/main
 
 
 FEATURES  = ["wind_speed", "hour_sin", "hour_cos", "dow_sin", "dow_cos"]
@@ -66,12 +62,9 @@ def train_all_models(df: pd.DataFrame) -> dict:
     X_train, X_test, y_train, y_test = prepare_data(df)
     X_sc_train, X_sc_test, scaler    = scale_features(X_train, X_test)
 
-<<<<<<< HEAD
     print("Training Persistence Model...")
     pm_model = persistence_model.train(X_train, y_train)
 
-=======
->>>>>>> origin/main
     print("Training Linear Regression...")
     lr_model = linear_regression.train(X_train, y_train, polynomial_degree=2)
 
@@ -84,7 +77,6 @@ def train_all_models(df: pd.DataFrame) -> dict:
     print("Training Quantile Regression...")
     qr_models = quantile_regression.train_all_quantiles(X_train, y_train)
 
-<<<<<<< HEAD
     print("Training Quantile Regression Forest...")
     qrf_model = quantile_regression_forest.train(X_train, y_train)
 
@@ -95,13 +87,6 @@ def train_all_models(df: pd.DataFrame) -> dict:
         "NeuralNet":          nn_model,
         "QuantileRegression": qr_models,
         "QRF":                qrf_model,
-=======
-    models = {
-        "LinearRegression": lr_model,
-        "RandomForest":     rf_model,
-        "NeuralNet":        nn_model,
-        "QuantileRegression": qr_models,
->>>>>>> origin/main
     }
 
     # TODO: Modelle speichern
