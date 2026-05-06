@@ -48,10 +48,16 @@ def _save_data_config(config: dict) -> None:
 def set_production_path(path: str) -> Path:
     """
     Speichert den Produktionspfad zentral fuer alle Notebooks.
+    Pfad wird relativ zum Projektroot gespeichert, damit die config
+    auf jedem Rechner funktioniert.
     """
     resolved_path = _resolve_path(path)
+    try:
+        store_path = str(resolved_path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        store_path = str(resolved_path)
     config = _load_data_config()
-    config["production_path"] = str(resolved_path)
+    config["production_path"] = store_path
     _save_data_config(config)
     return resolved_path
 
