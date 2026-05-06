@@ -10,7 +10,7 @@ import pandas as pd
 from src.utils.metrics import rmse, mae, bias
 from src.models import (linear_regression, random_forest, neural_net,
                         quantile_regression, persistence_model,
-                        quantile_regression_forest)
+                        quantile_regression_forest, arima)
 
 
 def evaluate_all(models: dict,
@@ -72,6 +72,15 @@ def evaluate_all(models: dict,
         "mae": mae(y_test, y_pred_qrf),
         "bias": bias(y_test, y_pred_qrf),
     }
+
+    # ARIMA
+    if "ARIMA" in models:
+        y_pred_arima = arima.predict(models["ARIMA"], steps=len(y_test))
+        results["ARIMA"] = {
+            "rmse": rmse(y_test, y_pred_arima),
+            "mae": mae(y_test, y_pred_arima),
+            "bias": bias(y_test, y_pred_arima),
+        }
 
     df_results = pd.DataFrame(results).T.round(4)
     print("\n── Forecast Evaluation ──────────────────")
