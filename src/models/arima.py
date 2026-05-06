@@ -5,7 +5,6 @@
 #        Zielwerte (keine Exogenous-Features).
 #
 # TODO:
-#   - order=(p,d,q) ggf. per auto_arima optimieren
 #   - Für Produktiveinsatz rolling forecast durch
 #     apply() mit update() ersetzen (deutlich schneller)
 # -------------------------------------------------------
@@ -21,14 +20,44 @@ TARGET   = "power"
 _ORDER = (2, 1, 2)
 
 
+def find_order(y_train: np.ndarray,
+               max_p: int = 5, max_q: int = 5,
+               information_criterion: str = "aic") -> tuple:
+    """
+    Bestimmt (p, d, q) automatisch via pmdarima.auto_arima.
+    Fällt auf _ORDER zurück falls pmdarima nicht installiert ist.
+    """
+    try:
+        import pmdarima as pm
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = pm.auto_arima(
+                np.asarray(y_train, dtype=float),
+                max_p=max_p, max_q=max_q,
+                information_criterion=information_criterion,
+                stepwise=True, seasonal=False,
+                error_action="ignore", suppress_warnings=True,
+            )
+        return result.order
+    except ImportError:
+        return _ORDER
+
+
 def build_model(y_train: np.ndarray, order: tuple = _ORDER):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return _ARIMA(np.asarray(y_train, dtype=float), order=order).fit()
 
 
-def train(y_train: np.ndarray, order: tuple = _ORDER):
-    """Trainiert ARIMA auf der Zielreihe y_train."""
+def train(y_train: np.ndarray, order: tuple = None) -> object:
+    """
+    Trainiert ARIMA auf der Zielreihe y_train.
+    order=None → auto_arima wählt (p,d,q) automatisch (empfohlen).
+    order=(p,d,q) → fixer Wert, schneller aber ggf. suboptimal.
+    """
+    if order is None:
+        order = find_order(y_train)
+        print(f"  auto_arima gewählt: order={order}")
     return build_model(y_train, order=order)
 
 
