@@ -1,13 +1,4 @@
 # arima.py
-# -------------------------------------------------------
-# Zweck: ARIMA als univariater Zeitreihen-Baseline.
-#        Modelliert Windleistung nur auf Basis vergangener
-#        Zielwerte (keine Exogenous-Features).
-#
-# TODO:
-#   - Für Produktiveinsatz rolling forecast durch
-#     apply() mit update() ersetzen (deutlich schneller)
-# -------------------------------------------------------
 
 import warnings
 import numpy as np
@@ -18,6 +9,11 @@ FEATURES = ["wind_speed", "hour_sin", "hour_cos", "dow_sin", "dow_cos"]
 TARGET   = "power"
 
 _ORDER = (2, 1, 2)
+
+
+def _as_1d_float(values) -> np.ndarray:
+    arr = np.asarray(values, dtype=float)
+    return arr.reshape(1) if arr.ndim == 0 else arr.ravel()
 
 
 def find_order(y_train: np.ndarray,
@@ -49,6 +45,16 @@ def build_model(y_train: np.ndarray, order: tuple = _ORDER):
         return _ARIMA(np.asarray(y_train, dtype=float), order=order).fit()
 
 
+def update(model, y_new: np.ndarray):
+    y_new = _as_1d_float(y_new)
+    if y_new.size == 0:
+        return model
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return model.extend(y_new)
+
+
 def train(y_train: np.ndarray, order: tuple = None) -> object:
     """
     Trainiert ARIMA auf der Zielreihe y_train.
@@ -61,11 +67,34 @@ def train(y_train: np.ndarray, order: tuple = None) -> object:
     return build_model(y_train, order=order)
 
 
-def predict(model, steps: int) -> np.ndarray:
+def predict(model, steps: int, y_observed: np.ndarray = None) -> np.ndarray:
     """
     Gibt einen Punkt-Forecast für die nächsten `steps` Schritte zurück.
-    Kein Rolling – schnell, aber akkumuliert Fehler über längere Horizonte.
+    Mit y_observed wird der Zustand schnell ohne Refit fortgeschrieben.
     """
+    steps = int(steps)
+    if steps <= 0:
+        return np.empty(0, dtype=float)
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return model.forecast(steps=steps)
+        if y_observed is None:
+            return _as_1d_float(model.forecast(steps=steps))
+
+        y_observed = _as_1d_float(y_observed)
+        n_update = min(steps, y_observed.size)
+        if n_update == 0:
+            return _as_1d_float(model.forecast(steps=steps))
+
+        updated = model.extend(y_observed[:n_update])
+        y_pred = _as_1d_float(updated.fittedvalues)[:n_update]
+
+        if n_update < steps:
+            tail = _as_1d_float(updated.forecast(steps=steps - n_update))
+            y_pred = np.concatenate([y_pred, tail])
+        return y_pred
+
+
+def rolling_predict(model, y_observed: np.ndarray) -> np.ndarray:
+    y_observed = _as_1d_float(y_observed)
+    return predict(model, steps=y_observed.size, y_observed=y_observed)
