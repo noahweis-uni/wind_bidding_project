@@ -10,7 +10,7 @@ import pandas as pd
 from src.utils.metrics import rmse, mae, bias
 from src.models import (linear_regression, random_forest, neural_net,
                         quantile_regression, persistence_model,
-                        quantile_regression_forest, arima)
+                        quantile_regression_forest, arima, decomposition)
 
 
 def evaluate_all(models: dict,
@@ -80,6 +80,15 @@ def evaluate_all(models: dict,
             "rmse": rmse(y_test, y_pred_arima),
             "mae": mae(y_test, y_pred_arima),
             "bias": bias(y_test, y_pred_arima),
+        }
+
+    # Decomposition
+    if "Decomposition" in models:
+        y_pred_decomp = decomposition.predict(models["Decomposition"], steps=len(y_test))
+        results["Decomposition"] = {
+            "rmse": rmse(y_test, y_pred_decomp),
+            "mae": mae(y_test, y_pred_decomp),
+            "bias": bias(y_test, y_pred_decomp),
         }
 
     df_results = pd.DataFrame(results).T.round(4)
