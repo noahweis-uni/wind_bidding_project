@@ -1,0 +1,3 @@
+,RMSE,MAE,MAPE (%),Newsvendor Loss
+RF + Windowing,462.424,265.691,795.351,3473.498
+EN + Windowing,345.093,195.639,548.493,2514.013
