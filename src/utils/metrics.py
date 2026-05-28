@@ -34,16 +34,18 @@ def mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 
 def newsvendor_loss(y_true: np.ndarray,
                    y_bid: np.ndarray,
-                   c_over: float = 1.0,
-                   c_under: float = 1.0) -> float:
+                   c_under: float = 1.0,
+                   c_over: float = 1.0) -> float:
     """
-    Klassischer Newsvendor-Loss.
-    c_over:  Kosten pro kWh Überproduktion (zu viel geboten)
-    c_under: Kosten pro kWh Unterproduktion (zu wenig geboten)
+    Newsvendor-Loss (Erwartungswert über alle Stunden).
+    c_under: Kosten bei Unterdeckung (bid > actual), E[max(reBAP - DA, 0)]
+    c_over:  Kosten bei Überdeckung  (actual > bid), E[max(DA - reBAP, 0)]
+    L = c_under * max(bid - actual, 0) + c_over * max(actual - bid, 0)
     """
-    over  = np.maximum(y_bid - y_true, 0)
-    under = np.maximum(y_true - y_bid, 0)
-    return np.mean(c_over * over + c_under * under)
+    return float(np.mean(
+        c_under * np.maximum(y_bid - y_true, 0) +
+        c_over  * np.maximum(y_true - y_bid, 0)
+    ))
 
 
 def profit(y_true: np.ndarray,
