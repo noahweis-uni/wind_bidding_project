@@ -10,7 +10,7 @@ import pandas as pd
 from src.utils.metrics import rmse, mae, bias
 from src.models import (linear_regression, random_forest, neural_net,
                         quantile_regression, persistence_model,
-                        quantile_regression_forest)
+                        quantile_regression_forest, arima, decomposition)
 
 
 def evaluate_all(models: dict,
@@ -23,15 +23,22 @@ def evaluate_all(models: dict,
     """
     results = {}
 
-    # Persistence Model – y_prev = [y_train[-1], y_test[0], ..., y_test[-2]]
-    pm_model = models["Persistence"]
-    y_prev   = np.concatenate([[pm_model["last_obs"]], y_test[:-1]])
-    y_pred_pm = persistence_model.predict(pm_model, X_test, y_prev)
-    results["Persistence"] = {
+    # Persistence 1h
+    y_pred_pm = persistence_model.predict(models["Persistence"], X_test, y_test)
+    results["Persistence (1h)"] = {
         "rmse": rmse(y_test, y_pred_pm),
-        "mae": mae(y_test, y_pred_pm),
+        "mae":  mae(y_test, y_pred_pm),
         "bias": bias(y_test, y_pred_pm),
     }
+
+    # Persistence 24h
+    if "Persistence24h" in models:
+        y_pred_pm24 = persistence_model.predict(models["Persistence24h"], X_test, y_test)
+        results["Persistence (24h)"] = {
+            "rmse": rmse(y_test, y_pred_pm24),
+            "mae":  mae(y_test, y_pred_pm24),
+            "bias": bias(y_test, y_pred_pm24),
+        }
 
     # Linear Regression
     y_pred_lr = linear_regression.predict(models["LinearRegression"], X_test)
@@ -72,6 +79,24 @@ def evaluate_all(models: dict,
         "mae": mae(y_test, y_pred_qrf),
         "bias": bias(y_test, y_pred_qrf),
     }
+
+    # ARIMA
+    if "ARIMA" in models:
+        y_pred_arima = arima.predict(models["ARIMA"], steps=len(y_test))
+        results["ARIMA"] = {
+            "rmse": rmse(y_test, y_pred_arima),
+            "mae": mae(y_test, y_pred_arima),
+            "bias": bias(y_test, y_pred_arima),
+        }
+
+    # Decomposition
+    if "Decomposition" in models:
+        y_pred_decomp = decomposition.predict(models["Decomposition"], steps=len(y_test))
+        results["Decomposition"] = {
+            "rmse": rmse(y_test, y_pred_decomp),
+            "mae": mae(y_test, y_pred_decomp),
+            "bias": bias(y_test, y_pred_decomp),
+        }
 
     df_results = pd.DataFrame(results).T.round(4)
     print("\n── Forecast Evaluation ──────────────────")

@@ -12,7 +12,7 @@
 # -------------------------------------------------------
 
 import numpy as np
-from src.models import quantile_regression
+from src.bidding import newsvendor
 
 
 def naive_bid(y_pred: np.ndarray) -> np.ndarray:
@@ -29,14 +29,11 @@ def quantile_bid(qr_models: dict,
                  c_under: float = 1.0,
                  c_over: float = 1.0) -> np.ndarray:
     """
-    Benchmark 2 – Newsvendor-optimal:
-    tau = c_under / (c_under + c_over)
-    y* = q_tau
-
-    TODO: c_under/c_over aus Marktdaten ableiten.
-          Typisch: c_under = reBAP - DA, c_over = DA - reBAP (je nach Vorzeichen)
+    Newsvendor-optimales Gebot:
+    τ* = c_under / (c_under + c_over)  →  y* = q_{τ*}
+    Interpoliert zwischen verfügbaren Quantilen.
     """
-    return quantile_regression.optimal_bid(qr_models, X_test, c_under, c_over)
+    return newsvendor.optimal_bid(qr_models, X_test, c_under, c_over)
 
 
 def oracle_bid(y_true: np.ndarray) -> np.ndarray:

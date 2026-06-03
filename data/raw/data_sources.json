@@ -1,3 +1,4 @@
 {
-  "production_path": "C:\\Users\\felix\\Downloads\\Daten zur Windkennlinie_2025-09-17\\Schwanfeld\\2016_10-Min-Daten WEA Schwanfeld.xlsx"
+  "production_path": "data/raw/Daten zur Windkennlinie_2025-09-17/Schwanfeld/2016_10-Min-Daten WEA Schwanfeld.xlsx",
+  "rebap_path": "data\\raw\\Daten zu reBAP Preisen\\reBAP unterdeckt 2016-2025.csv"
 }
