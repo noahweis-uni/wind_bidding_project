@@ -85,12 +85,13 @@ def _tree_predictions(
     np.ndarray
         Array with shape (n_samples, n_trees).
     """
+    X_arr = np.asarray(X)
+
     tree_preds = np.column_stack([
-        tree.predict(X) for tree in model.estimators_
+        tree.predict(X_arr) for tree in model.estimators_
     ])
 
     return tree_preds
-
 
 def predict_quantile(
     model: RandomForestRegressor,
