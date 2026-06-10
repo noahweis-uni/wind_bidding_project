@@ -24,6 +24,11 @@ WIND_DATA_DIR = PROJECT_ROOT / "data" / "raw" / "Daten zur Windkennlinie_2025-09
 REBAP_DIR     = PROJECT_ROOT / "data" / "raw" / "daten zu rebap preisen"
 
 
+def get_production_path() -> Path:
+    """Gibt den Ordner mit den Wind-Produktionsdaten zurück."""
+    return WIND_DATA_DIR
+
+
 # ---------------------------------------------------------------------------
 # Format-Erkennung und Einlesen einzelner Dateien
 # ---------------------------------------------------------------------------
