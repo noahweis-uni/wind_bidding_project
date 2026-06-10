@@ -42,3 +42,5 @@ venv/
 __pycache__/
 *.pyc
 
+results/models/*.joblib
+results/models/*.joblib

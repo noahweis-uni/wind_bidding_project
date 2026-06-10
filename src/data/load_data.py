@@ -1,146 +1,239 @@
 # load_data.py
 # -------------------------------------------------------
-# Zweck: Excel-Rohdaten einlesen und als DataFrame zurueckgeben.
+# Lädt alle Windkraft-Rohdaten aus 4 Standorten:
+#   - Schonungen, Schwanfeld, Trabelsdorf: deutsches Format
+#   - Obbach: englisches Format (Header ab Zeile 10)
 #
-# TODO:
-#   - Pfade zu euren Excel-Dateien anpassen (production, prices, rebap)
-#   - Spaltennamen pruefen - muessen exakt mit euren Excel-Headern uebereinstimmen
-#   - Bei mehreren Sheets: sheet_name=... Parameter setzen
-#
-# Aufgerufen von: notebooks/01_data_understanding.ipynb
-#                notebooks/02_preprocessing.ipynb
+# Ordnerstruktur:
+#   data/raw/Daten zur Windkennlinie_2025-09-17/
+#     Obbach/       2021/ 2022/ 2023/ 2024/ 2025/  ← Jahres-Unterordner
+#     Schonungen/   *.xlsx  (direkt)
+#     Schwanfeld/   *.xlsx  (direkt)
+#     Trabelsdorf/  *.xlsx  (direkt)
 # -------------------------------------------------------
 
-import json
+from __future__ import annotations
+
+import warnings
 from pathlib import Path
 
 import pandas as pd
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_CONFIG_PATH = PROJECT_ROOT / "data" / "raw" / "data_sources.json"
-
-PRODUCTION_PATH = "data/raw/production.xlsx"
-PRICES_DA_PATH  = "data/raw/day_ahead_prices.xlsx"
-REBAP_PATH      = "data/raw/Daten zu reBAP Preisen/reBAP unterdeckt 2016-2025.csv"
-
-
-def _resolve_path(path: str | Path) -> Path:
-    path = Path(path).expanduser()
-    if path.is_absolute():
-        return path.resolve()
-    return (PROJECT_ROOT / path).resolve()
-
-
-def _load_data_config() -> dict:
-    if not DATA_CONFIG_PATH.exists():
-        return {}
-    with DATA_CONFIG_PATH.open("r", encoding="utf-8") as fh:
-        return json.load(fh)
-
-
-def _save_data_config(config: dict) -> None:
-    DATA_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with DATA_CONFIG_PATH.open("w", encoding="utf-8") as fh:
-        json.dump(config, fh, indent=2)
-
-
-def set_production_path(path: str) -> Path:
-    """
-    Speichert den Produktionspfad zentral fuer alle Notebooks.
-    Pfad wird relativ zum Projektroot gespeichert, damit die config
-    auf jedem Rechner funktioniert.
-    """
-    resolved_path = _resolve_path(path)
-    try:
-        store_path = str(resolved_path.relative_to(PROJECT_ROOT))
-    except ValueError:
-        store_path = str(resolved_path)
-    config = _load_data_config()
-    config["production_path"] = store_path
-    _save_data_config(config)
-    return resolved_path
+WIND_DATA_DIR = PROJECT_ROOT / "data" / "raw" / "Daten zur Windkennlinie_2025-09-17"
+REBAP_DIR     = PROJECT_ROOT / "data" / "raw" / "daten zu rebap preisen"
 
 
 def get_production_path() -> Path:
-    """
-    Liefert den zentral konfigurierten Produktionspfad.
-    """
-    config = _load_data_config()
-    configured_path = config.get("production_path", PRODUCTION_PATH)
-    return _resolve_path(configured_path)
+    """Gibt den Ordner mit den Wind-Produktionsdaten zurück."""
+    return WIND_DATA_DIR
 
 
-def set_rebap_path(path: str) -> Path:
-    """
-    Speichert den reBAP-Pfad zentral fuer alle Notebooks.
-    """
-    resolved_path = _resolve_path(path)
+# ---------------------------------------------------------------------------
+# Format-Erkennung und Einlesen einzelner Dateien
+# ---------------------------------------------------------------------------
+
+def _is_obbach_format(path: Path) -> bool:
+    """Prüft ob die Datei das Obbach-Format hat (englischer Header ab Zeile 10)."""
     try:
-        store_path = str(resolved_path.relative_to(PROJECT_ROOT))
-    except ValueError:
-        store_path = str(resolved_path)
-    config = _load_data_config()
-    config["rebap_path"] = store_path
-    _save_data_config(config)
-    return resolved_path
+        df = pd.read_excel(path, header=None, nrows=12)
+        # Obbach hat "Time Stamp" in Zeile 10
+        row10 = [str(v) for v in df.iloc[10].values if pd.notna(v)]
+        return any("Time Stamp" in v for v in row10)
+    except Exception:
+        return False
 
 
-def get_rebap_path() -> Path:
+def _load_standard_format(path: Path, site: str) -> pd.DataFrame | None:
     """
-    Liefert den zentral konfigurierten reBAP-Pfad.
+    Liest Schonungen / Schwanfeld / Trabelsdorf Format.
+    Spalten: Datum, Leistung (Ø) [kW], Windgeschwindigkeit (Ø) [m/s]
     """
-    config = _load_data_config()
-    configured_path = config.get("rebap_path", REBAP_PATH)
-    return _resolve_path(configured_path)
+    try:
+        df = pd.read_excel(path)
+        df = df.rename(columns={
+            "Datum":                        "timestamp",
+            "Leistung (Ø) [kW]":            "power",
+            "Windgeschwindigkeit (Ø) [m/s]": "wind_speed",
+        })
+        df["timestamp"] = pd.to_datetime(df["timestamp"], dayfirst=True, errors="coerce")
+        df = df[["timestamp", "power", "wind_speed"]].dropna(subset=["timestamp"])
+        df["site"] = site
+        return df
+    except Exception as e:
+        warnings.warn(f"Fehler (Standard-Format) {path.name}: {e}")
+        return None
 
 
-def load_production(path: str = PRODUCTION_PATH) -> pd.DataFrame:
+def _load_obbach_format(path: Path) -> pd.DataFrame | None:
     """
-    Laedt die 10-Minuten-Produktionsdaten.
-    Erwartet Spalten: Datum, Leistung (O) [kW], Windgeschwindigkeit (O) [m/s], ...
+    Liest Obbach-Format.
+    Header in Zeile 10 (0-basiert), relevante Spalten:
+    Time Stamp, Power(kW), Wind speed(m/s)
     """
-    if path == PRODUCTION_PATH:
-        path = get_production_path()
-    else:
-        path = _resolve_path(path)
-
-    # TODO: sheet_name anpassen falls noetig
-    df = pd.read_excel(path)
-    return df
-
-
-def load_day_ahead_prices(path: str = PRICES_DA_PATH) -> pd.DataFrame:
-    """
-    Laedt Day-Ahead Strompreise (stuendlich).
-    Erwartet Spalten: timestamp, price_da
-    """
-    # TODO: Spaltennamen anpassen
-    df = pd.read_excel(_resolve_path(path))
-    return df
+    try:
+        df = pd.read_excel(path, header=10)
+        df = df.rename(columns={
+            "Time Stamp":      "timestamp",
+            "Power(kW)":       "power",
+            "Wind speed(m/s)": "wind_speed",
+        })
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df[["timestamp", "power", "wind_speed"]].dropna(subset=["timestamp"])
+        df["site"] = "Obbach"
+        return df
+    except Exception as e:
+        warnings.warn(f"Fehler (Obbach-Format) {path.name}: {e}")
+        return None
 
 
-def load_rebap(path: str = None) -> pd.DataFrame:
+def _load_single_file(path: Path, site: str) -> pd.DataFrame | None:
+    """Erkennt Format automatisch und liest die Datei ein."""
+    if site == "Obbach" or _is_obbach_format(path):
+        return _load_obbach_format(path)
+    return _load_standard_format(path, site)
+
+
+# ---------------------------------------------------------------------------
+# Alle Dateien laden
+# ---------------------------------------------------------------------------
+
+def load_production(
+    sites: list[str] | None = None,
+    years: list[int] | None = None,
+    verbose: bool = True,
+) -> pd.DataFrame:
     """
-    Laedt reBAP-Preise (15-Minuten-Aufloesung, 2016-2025).
-    Gibt DataFrame mit DatetimeIndex und Spalten:
-      price_rebap_under  [EUR/MWh] – reBAP Unterdeckung
-      price_rebap_over   [EUR/MWh] – reBAP Ueberdeckung
+    Lädt alle Produktionsdaten aus allen Standorten und Jahren.
+
+    Parameters
+    ----------
+    sites : list[str] | None
+        Nur bestimmte Standorte, z.B. ["Schonungen", "Schwanfeld"].
+        None = alle 4 Standorte.
+    years : list[int] | None
+        Nur bestimmte Jahre, z.B. [2019, 2020, 2021].
+        None = alle verfügbaren Jahre.
+
+    Returns
+    -------
+    pd.DataFrame
+        Kombinierter DataFrame mit Spalten:
+        timestamp, power, wind_speed, site
     """
-    resolved = _resolve_path(path) if path else get_rebap_path()
-    df = pd.read_csv(
-        resolved,
-        sep=";",
-        decimal=",",
-        encoding="utf-8-sig",
+    if not WIND_DATA_DIR.exists():
+        raise FileNotFoundError(
+            f"Wind-Datenordner nicht gefunden:\n  {WIND_DATA_DIR}\n"
+            "Bitte WIND_DATA_DIR in load_data.py anpassen."
+        )
+
+    # Alle Standort-Unterordner
+    site_dirs = [d for d in WIND_DATA_DIR.iterdir() if d.is_dir()]
+
+    # Nach Standort filtern
+    if sites is not None:
+        sites_lower = [s.lower() for s in sites]
+        site_dirs = [d for d in site_dirs if d.name.lower() in sites_lower]
+
+    if not site_dirs:
+        raise ValueError(f"Keine Standort-Ordner gefunden. sites={sites}")
+
+    all_dfs = []
+
+    for site_dir in sorted(site_dirs):
+        site_name = site_dir.name
+        files = sorted(site_dir.rglob("*.xlsx"))
+
+        # Nach Jahr filtern (Dateiname oder Ordnername muss Jahr enthalten)
+        if years is not None:
+            years_str = [str(y) for y in years]
+            files = [
+                f for f in files
+                if any(y in f.name or y in f.parent.name for y in years_str)
+            ]
+
+        if not files:
+            if verbose:
+                print(f"  {site_name}: keine Dateien (nach Filter)")
+            continue
+
+        if verbose:
+            print(f"\n{site_name}: {len(files)} Datei(en)")
+
+        for f in files:
+            if verbose:
+                print(f"  Lade: {f.name}")
+            df = _load_single_file(f, site_name)
+            if df is not None and len(df) > 0:
+                all_dfs.append(df)
+            elif verbose:
+                print(f"    ⚠ übersprungen (leer oder Fehler)")
+
+    if not all_dfs:
+        raise ValueError("Keine Daten geladen.")
+
+    combined = (
+        pd.concat(all_dfs, ignore_index=True)
+        .sort_values(["site", "timestamp"])
+        .reset_index(drop=True)
     )
-    df["timestamp"] = pd.to_datetime(
-        df["Datum"] + " " + df["von"],
-        format="%d.%m.%Y %H:%M",
+
+    if verbose:
+        print(f"\n{'='*50}")
+        print(f"Gesamt: {len(combined):,} Zeilen")
+        print(f"Standorte: {combined['site'].unique().tolist()}")
+        print(f"Zeitraum:  {combined['timestamp'].min()} bis {combined['timestamp'].max()}")
+
+    return combined
+
+
+# ---------------------------------------------------------------------------
+# reBAP-Preise
+# ---------------------------------------------------------------------------
+
+def load_rebap(rebap_dir: Path | None = None) -> pd.DataFrame:
+    """
+    Lädt alle reBAP-CSV-Dateien und gibt einen stündlich aggregierten
+    DataFrame zurück.
+    """
+    base = Path(rebap_dir) if rebap_dir else REBAP_DIR
+
+    if not base.exists():
+        raise FileNotFoundError(f"reBAP-Ordner nicht gefunden: {base}")
+
+    files = sorted(base.glob("reBAP *.csv"))
+    if not files:
+        raise FileNotFoundError(f"Keine 'reBAP *.csv' Dateien in: {base}")
+
+    print(f"Lade {len(files)} reBAP-Dateien...")
+
+    dfs = []
+    for f in files:
+        df = pd.read_csv(
+            f, sep=";", decimal=",", encoding="utf-8-sig",
+            usecols=["Datum", "von", "reBAP unterdeckt", "reBAP ueberdeckt"],
+        )
+        df["timestamp"] = pd.to_datetime(
+            df["Datum"] + " " + df["von"],
+            format="%d.%m.%Y %H:%M", errors="coerce",
+        )
+        df = df.dropna(subset=["timestamp"]).rename(columns={
+            "reBAP unterdeckt": "rebap_under",
+            "reBAP ueberdeckt": "rebap_over",
+        })
+        df["rebap"] = (df["rebap_under"] + df["rebap_over"]) / 2
+        dfs.append(df[["timestamp", "rebap", "rebap_under", "rebap_over"]])
+
+    rebap_raw = pd.concat(dfs, ignore_index=True).sort_values("timestamp")
+
+    rebap_hourly = (
+        rebap_raw.set_index("timestamp")
+        .resample("h")[["rebap", "rebap_under", "rebap_over"]]
+        .mean()
+        .reset_index()
     )
-    df = df.rename(columns={
-        "reBAP unterdeckt": "price_rebap_under",
-        "reBAP ueberdeckt": "price_rebap_over",
-    })
-    df = df[["timestamp", "price_rebap_under", "price_rebap_over"]].set_index("timestamp")
-    return df
+
+    print(f"reBAP: {rebap_hourly.shape[0]:,} Stunden | "
+          f"{rebap_hourly['timestamp'].min().date()} bis {rebap_hourly['timestamp'].max().date()}")
+
+    return rebap_hourly

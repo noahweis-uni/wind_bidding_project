@@ -1,73 +1,163 @@
-# neural_net.py
-# -------------------------------------------------------
-# Zweck: Kleines MLP (Multi-Layer Perceptron) als Black-Box Modell.
-#        Dient dem Vergleich: Black Box vs. Interpretierbar.
-#
-# TODO:
-#   - FEATURES anpassen
-#   - Architektur (hidden_sizes) nach Bedarf anpassen
-#   - epochs und batch_size sind gute Defaults für kleine Datensätze
-#   - Normalisierung: X muss vor Training skaliert werden! (StandardScaler)
-# -------------------------------------------------------
+"""
+Neural Network model for wind power forecasting.
+
+This module uses sklearn's MLPRegressor as a feed-forward neural network.
+It provides a consistent train/predict/evaluate interface for the project notebooks.
+"""
+
+from __future__ import annotations
 
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
+import pandas as pd
+
+from sklearn.neural_network import MLPRegressor
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
-FEATURES = ["wind_speed", "hour_sin", "hour_cos", "dow_sin", "dow_cos"]
-TARGET   = "power"
-
-
-class MLP(nn.Module):
-    def __init__(self, input_dim: int, hidden_sizes: list = [64, 32]):
-        super().__init__()
-        layers = []
-        prev = input_dim
-        for h in hidden_sizes:
-            layers += [nn.Linear(prev, h), nn.ReLU()]
-            prev = h
-        layers.append(nn.Linear(prev, 1))
-        self.net = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.net(x).squeeze(-1)
-
-
-def train(X_train: np.ndarray, y_train: np.ndarray,
-          epochs: int = 100, batch_size: int = 64,
-          lr: float = 1e-3) -> MLP:
+def train(
+    X_train: np.ndarray | pd.DataFrame,
+    y_train: np.ndarray | pd.Series,
+    hidden_layer_sizes: tuple[int, ...] = (64, 32),
+    activation: str = "relu",
+    alpha: float = 0.0001,
+    learning_rate_init: float = 0.001,
+    max_iter: int = 1000,
+    random_state: int = 42,
+) -> Pipeline:
     """
-    Trainiert das MLP mit MSE-Loss.
-    TODO: X_train sollte vorher mit StandardScaler normiert werden.
+    Train a feed-forward neural network for regression.
+
+    Parameters
+    ----------
+    X_train:
+        Training features.
+    y_train:
+        Training target values.
+    hidden_layer_sizes:
+        Number of neurons per hidden layer.
+    activation:
+        Activation function, e.g. 'relu' or 'tanh'.
+    alpha:
+        L2 regularization strength.
+    learning_rate_init:
+        Initial learning rate.
+    max_iter:
+        Maximum number of training iterations.
+    random_state:
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    Pipeline
+        Fitted sklearn pipeline with StandardScaler and MLPRegressor.
     """
-    X_t = torch.FloatTensor(X_train)
-    y_t = torch.FloatTensor(y_train)
-    dataset = TensorDataset(X_t, y_t)
-    loader  = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    model = Pipeline(
+        steps=[
+            ("scaler", StandardScaler()),
+            (
+                "mlp",
+                MLPRegressor(
+                    hidden_layer_sizes=hidden_layer_sizes,
+                    activation=activation,
+                    alpha=alpha,
+                    learning_rate_init=learning_rate_init,
+                    max_iter=max_iter,
+                    random_state=random_state,
+                    early_stopping=True,
+                    validation_fraction=0.1,
+                    n_iter_no_change=20,
+                ),
+            ),
+        ]
+    )
 
-    model     = MLP(input_dim=X_train.shape[1])
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.MSELoss()
-
-    model.train()
-    for epoch in range(epochs):
-        for xb, yb in loader:
-            optimizer.zero_grad()
-            loss = criterion(model(xb), yb)
-            loss.backward()
-            optimizer.step()
-        # TODO: Logging einbauen wenn gewünscht
-        # if (epoch+1) % 20 == 0: print(f"Epoch {epoch+1}: loss={loss.item():.4f}")
-
+    model.fit(X_train, y_train)
     return model
 
 
-def predict(model: MLP, X_test: np.ndarray) -> np.ndarray:
+def predict(
+    model: Pipeline,
+    X_test: np.ndarray | pd.DataFrame,
+    clip_negative: bool = True,
+) -> np.ndarray:
     """
-    TODO: X_test mit demselben Scaler wie X_train transformieren!
+    Generate predictions with a trained neural network.
+
+    Parameters
+    ----------
+    model:
+        Trained sklearn pipeline.
+    X_test:
+        Test features.
+    clip_negative:
+        If True, negative predictions are clipped to zero.
+
+    Returns
+    -------
+    np.ndarray
+        Predicted values.
     """
-    model.eval()
-    with torch.no_grad():
-        return model(torch.FloatTensor(X_test)).numpy()
+    y_pred = model.predict(X_test)
+
+    if clip_negative:
+        y_pred = np.clip(y_pred, 0, None)
+
+    return y_pred
+
+
+def evaluate(
+    y_true: np.ndarray | pd.Series,
+    y_pred: np.ndarray | pd.Series,
+) -> dict[str, float]:
+    """
+    Evaluate predictions using standard forecast metrics.
+
+    Parameters
+    ----------
+    y_true:
+        True target values.
+    y_pred:
+        Predicted target values.
+
+    Returns
+    -------
+    dict[str, float]
+        Dictionary containing MAE, RMSE and R2.
+    """
+    mae = mean_absolute_error(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    r2 = r2_score(y_true, y_pred)
+
+    return {
+        "MAE": float(mae),
+        "RMSE": float(rmse),
+        "R2": float(r2),
+    }
+
+
+def get_model_info(model: Pipeline) -> dict[str, object]:
+    """
+    Return basic information about the trained neural network.
+
+    Parameters
+    ----------
+    model:
+        Trained sklearn pipeline.
+
+    Returns
+    -------
+    dict[str, object]
+        Basic model information such as hidden layers and number of iterations.
+    """
+    mlp = model.named_steps["mlp"]
+
+    return {
+        "hidden_layer_sizes": mlp.hidden_layer_sizes,
+        "activation": mlp.activation,
+        "alpha": mlp.alpha,
+        "learning_rate_init": mlp.learning_rate_init,
+        "n_iter": mlp.n_iter_,
+        "loss": float(mlp.loss_),
+    }
