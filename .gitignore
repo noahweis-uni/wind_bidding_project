@@ -43,4 +43,6 @@ __pycache__/
 *.pyc
 
 results/models/*.joblib
-results/models/*.joblib
+
+# Claude Code internal settings
+.claude/
