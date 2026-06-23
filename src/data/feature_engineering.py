@@ -3,68 +3,46 @@
 # Verarbeitet kombinierte Rohdaten (alle Standorte, alle Jahre)
 # zu einem ML-fertigen stündlichen Datensatz.
 #
-# Strategie bei mehreren Standorten:
-#   Pro Zeitstempel wird über alle vorhandenen Standorte gemittelt.
-#   Das ergibt eine "Portfolio-Sicht" auf die Gesamtproduktion.
+# WICHTIG: Die Standort-Spalte ('site') bleibt jetzt erhalten,
+# damit einzelne Windkraftwerke separat analysiert werden können
+# (z.B. für Single-Plant Single-Day Forecasting in NB03).
+#
+# Aggregation erfolgt PRO STANDORT auf Stundenwerte, nicht mehr
+# über alle Standorte summiert/gemittelt.
 #
 # Output: data/processed/final_dataset.csv
 # -------------------------------------------------------
 
 from __future__ import annotations
 
-import warnings
 import numpy as np
 import pandas as pd
 
 
 def aggregate_to_hourly(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Aggregiert 10-Minuten-Daten auf Stundenwerte.
+    Aggregiert 10-Minuten-Daten auf Stundenwerte, PRO STANDORT getrennt.
 
-    Bei mehreren Standorten: erst pro Standort auf Stunden aggregieren,
-    dann über alle Standorte summieren (Gesamtportfolio).
+    Wichtig: Die Aggregation gruppiert nach (site, Stunde), damit
+    Daten verschiedener Standorte nicht vermischt werden.
     """
     df = df.copy()
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
     df = df.dropna(subset=["timestamp", "power"])
 
-    if "site" in df.columns:
-        # Pro Standort stündlich aggregieren
-        hourly_per_site = (
-            df.groupby(["site", pd.Grouper(key="timestamp", freq="h")])[["power", "wind_speed"]]
-            .mean()
-            .reset_index()
+    if "site" not in df.columns:
+        raise ValueError(
+            "Spalte 'site' fehlt im Rohdaten-DataFrame. "
+            "Bitte load_data.load_production() verwenden, das liefert 'site' mit."
         )
 
-        # Über alle Standorte summieren (Gesamtleistung) bzw. mitteln (Windgeschwindigkeit)
-        hourly = (
-            hourly_per_site.groupby("timestamp")
-            .agg(
-                power=("power", "sum"),          # Summe aller Standorte
-                wind_speed=("wind_speed", "mean"), # Mittlere Windgeschwindigkeit
-                n_sites=("site", "count"),         # Wie viele Standorte je Stunde
-            )
-            .reset_index()
-        )
-
-        # Nur Stunden behalten wo alle Standorte Daten liefern
-        n_total_sites = df["site"].nunique()
-        n_before = len(hourly)
-        hourly = hourly[hourly["n_sites"] == n_total_sites].drop(columns="n_sites")
-        n_dropped = n_before - len(hourly)
-        if n_dropped > 0:
-            warnings.warn(
-                f"{n_dropped} Stunden entfernt, weil nicht alle {n_total_sites} "
-                f"Standorte Daten lieferten."
-            )
-    else:
-        # Einzelner Standort
-        hourly = (
-            df.set_index("timestamp")
-            .resample("h")[["power", "wind_speed"]]
-            .mean()
-            .reset_index()
-        )
+    hourly = (
+        df.groupby(["site", pd.Grouper(key="timestamp", freq="h")])[["power", "wind_speed"]]
+        .mean()
+        .reset_index()
+        .sort_values(["site", "timestamp"])
+        .reset_index(drop=True)
+    )
 
     return hourly
 
@@ -91,14 +69,26 @@ def build_final_dataset(df_prod: pd.DataFrame) -> pd.DataFrame:
     ----------
     df_prod : pd.DataFrame
         Kombinierte Rohdaten aus load_data.load_production().
-        Erwartet Spalten: timestamp, power, wind_speed, (site).
+        Erwartet Spalten: timestamp, power, wind_speed, site.
 
     Returns
     -------
     pd.DataFrame
-        Stündlicher DataFrame mit allen Features.
+        Stündlicher DataFrame mit Spalten:
+        site, timestamp, power, wind_speed, hour, dayofweek, month,
+        hour_sin, hour_cos, dow_sin, dow_cos.
+
+        Enthält weiterhin ALLE Standorte (nicht gefiltert) — die
+        Auswahl eines einzelnen Standorts erfolgt in Notebook 03
+        über z.B. df[df["site"] == SELECTED_PLANT].
     """
     df = aggregate_to_hourly(df_prod)
     df = add_time_features(df)
     df = df.dropna().reset_index(drop=True)
+
+    # Spaltenreihenfolge: site und timestamp zuerst
+    cols = ["site", "timestamp", "power", "wind_speed",
+            "hour", "dayofweek", "month", "hour_sin", "hour_cos", "dow_sin", "dow_cos"]
+    df = df[cols]
+
     return df
