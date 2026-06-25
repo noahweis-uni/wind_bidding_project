@@ -46,3 +46,11 @@ results/models/*.joblib
 
 # Claude Code internal settings
 .claude/
+
+# Rohdaten (groß, nicht ins Repo)
+data/raw/weather/
+data/raw/satellite/
+
+# CDS/ADS API-Keys (außerhalb des Projekts in ~/.cdsapirc / ~/.adsapirc)
+.cdsapirc
+.adsapirc
