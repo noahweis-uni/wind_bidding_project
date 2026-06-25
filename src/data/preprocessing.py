@@ -8,6 +8,7 @@
 #   2. ERA5        (Copernicus CDS, Reanalyse, UTC)          -> Wetter-Features (Perfect-Forecast-Baseline, s.u.)
 #   3. Solar/pvlib (berechnet aus Standort + Zeit)           -> astronomische Features
 #   4. CAMS        (Copernicus ADS, Meteosat/MSG, UTC)       -> Satellitenstrahlungs-Features
+#   5. NWP         (Open-Meteo, ECMWF IFS HRES, UTC)        -> reale NWP-Forecast-Features (ab 2017, nwp_*)
 #
 # CAMS Solar Radiation (cams-solar-radiation-timeseries):
 #   Quelle: Copernicus Atmosphere Data Store (ADS), gleicher Account wie CDS.
@@ -23,9 +24,16 @@
 #   (Best-Case) eines wetterbasierten Gebotsmodells, nicht die operative Guete.
 #   In der Praxis wuerden ERA5-Features durch archivierte NWP-Forecasts ersetzt
 #   (z.B. ICON-EU oder GFS, ab ca. 2022 via Open-Meteo Historical Forecast API).
-#   Fuer den Projektzeitraum ab 2017 existiert kein frei zugaengliches NWP-Archiv,
-#   das eine konsistente Alternative bietet -- ERA5 wird daher bewusst als
-#   Perfect-Forecast-Baseline eingesetzt und ist als solche im Paper deklariert.
+#   Als direkte Alternative stehen ECMWF IFS HRES Forecasts via Open-Meteo
+#   (historical-forecast-api.open-meteo.com) ab 2017-01-01 zur Verfuegung (kostenlos,
+#   stundlich). Diese werden unter dem nwp_*-Praefix parallel zu ERA5 bereitgestellt
+#   und sind fuer die produktive Modellierung vorgesehen.
+#
+# NWP-Forecast-Features (Open-Meteo ECMWF IFS HRES):
+#   Quelle: historical-forecast-api.open-meteo.com, Modell ecmwf_ifs, kein API-Key.
+#   Deckt 2017-01-01 bis heute ab (stundlich, UTC). Kein Oracle-Problem.
+#   Gespeichert in data/raw/nwp/nwp_<site_lower>.csv (gitignored).
+#   Gleiche Attribute wie ERA5, Einheiten identisch (K, Pa, 0-1).
 #
 # Zeitzonen-Konvention (siehe harmonize_timestamps):
 #   - Produktion : lokale Zeit (Europe/Berlin, naiv)  -- ANNAHME, konfigurierbar
@@ -46,8 +54,9 @@ import pandas as pd
 from src.data.load_data import load_production
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-WEATHER_DIR = PROJECT_ROOT / "data" / "raw" / "weather"
+WEATHER_DIR   = PROJECT_ROOT / "data" / "raw" / "weather"
 SATELLITE_DIR = PROJECT_ROOT / "data" / "raw" / "satellite"
+NWP_DIR       = PROJECT_ROOT / "data" / "raw" / "nwp"
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 
 # Annahme zur Produktions-Zeitzone (SCADA liefert i.d.R. Lokalzeit). Falls die
@@ -505,7 +514,150 @@ def build_cams_features(sites: dict | None = None,
 
 
 # ---------------------------------------------------------------------------
-# 5) Zeitachsen harmonisieren & Bloecke mergen
+# 5) NWP-Forecast-Features (Open-Meteo ECMWF IFS HRES)
+# ---------------------------------------------------------------------------
+
+_OM_BASE = "https://historical-forecast-api.open-meteo.com/v1/forecast"
+_OM_VARS = (
+    "wind_speed_100m,wind_direction_100m,"
+    "wind_speed_10m,wind_direction_10m,"
+    "temperature_2m,surface_pressure,cloud_cover"
+)
+
+
+def download_nwp_forecast(sites: dict | None = None,
+                          start_date: str = "2017-01-01",
+                          end_date: str = "2025-08-31",
+                          nwp_dir: Path | None = None,
+                          overwrite: bool = False) -> dict[str, Path]:
+    """
+    Laedt ECMWF IFS HRES Forecasts vom Open-Meteo Historical Forecast API.
+
+    Kein API-Key erforderlich. Deckt 2017-01-01 bis heute ab.
+    Output: data/raw/nwp/nwp_<site_lower>.csv  (UTC, Komma-getrennt)
+
+    Returns
+    -------
+    Dict  {site_name: Path}
+    """
+    import urllib.request, urllib.parse, json
+
+    sites = sites or SITES
+    base = Path(nwp_dir) if nwp_dir else NWP_DIR
+    base.mkdir(parents=True, exist_ok=True)
+
+    paths: dict[str, Path] = {}
+    for site, (lat, lon) in sites.items():
+        target = base / f"nwp_{site.lower()}.csv"
+        if target.exists() and not overwrite:
+            print(f"  {site}: bereits vorhanden ({target.name}), skip.")
+            paths[site] = target
+            continue
+
+        print(f"  Downloading NWP fuer {site} ({lat:.4f}N, {lon:.4f}E) ...")
+        params = urllib.parse.urlencode({
+            "latitude":       lat,
+            "longitude":      lon,
+            "start_date":     start_date,
+            "end_date":       end_date,
+            "hourly":         _OM_VARS,
+            "models":         "ecmwf_ifs",
+            "wind_speed_unit": "ms",
+            "timezone":       "UTC",
+        })
+        url = f"{_OM_BASE}?{params}"
+        r = urllib.request.urlopen(url, timeout=60)
+        d = json.loads(r.read())
+
+        h = d["hourly"]
+        df = pd.DataFrame({
+            "timestamp":           h["time"],
+            "nwp_ws100":           h["wind_speed_100m"],
+            "nwp_wd100":           h["wind_direction_100m"],
+            "nwp_ws10":            h["wind_speed_10m"],
+            "nwp_wd10":            h["wind_direction_10m"],
+            "nwp_temp2m":          h["temperature_2m"],
+            "nwp_surface_pressure": h["surface_pressure"],
+            "nwp_cloud_cover":     h["cloud_cover"],
+        })
+        df.to_csv(target, index=False)
+        paths[site] = target
+        print(f"    -> {target.name} ({target.stat().st_size // 1024} kB, {len(df):,} Zeilen)")
+
+    return paths
+
+
+def build_nwp_features(sites: dict | None = None,
+                       nwp_dir: Path | None = None,
+                       verbose: bool = True) -> pd.DataFrame | None:
+    """
+    Liest die NWP-CSV-Dateien und baut den Feature-Block mit nwp_*-Spalten.
+
+    Einheiten werden auf ERA5-Konvention normiert (K, Pa, 0-1) damit
+    ERA5- und NWP-Features in denselben Modellen austauschbar sind.
+
+    Abgeleitete Groessen: nwp_wind_shear_diff/ratio, nwp_sin/cos_wd100/wd10.
+
+    Returns (LANG-Form)
+    -------
+    DataFrame [timestamp(lokal naiv), site,
+               nwp_ws100, nwp_wd100, nwp_sin_wd100, nwp_cos_wd100,
+               nwp_ws10,  nwp_wd10,  nwp_sin_wd10,  nwp_cos_wd10,
+               nwp_temp2m, nwp_surface_pressure, nwp_total_cloud_cover,
+               nwp_wind_shear_diff, nwp_wind_shear_ratio]
+    """
+    sites = sites or SITES
+    base = Path(nwp_dir) if nwp_dir else NWP_DIR
+
+    frames = []
+    for site in sites:
+        csv_path = base / f"nwp_{site.lower()}.csv"
+        if not csv_path.exists():
+            if verbose:
+                print(f"  {site}: kein NWP CSV ({csv_path.name}), uebersprungen.")
+            continue
+
+        d = pd.read_csv(csv_path)
+        d["timestamp_utc"] = pd.to_datetime(d["timestamp"], utc=True)
+
+        # Einheiten -> ERA5-Konvention
+        d["nwp_temp2m"]            = d["nwp_temp2m"] + 273.15          # °C -> K
+        d["nwp_surface_pressure"]  = d["nwp_surface_pressure"] * 100.0  # hPa -> Pa
+        d["nwp_total_cloud_cover"] = d["nwp_cloud_cover"] / 100.0       # % -> 0-1
+        d = d.drop(columns=["nwp_cloud_cover", "timestamp"])
+
+        # Abgeleitete Features
+        d["nwp_wind_shear_diff"]  = d["nwp_ws100"] - d["nwp_ws10"]
+        d["nwp_wind_shear_ratio"] = (d["nwp_ws100"]
+                                     / d["nwp_ws10"].replace(0.0, np.nan))
+        for h in ("100", "10"):
+            rad = np.radians(d[f"nwp_wd{h}"])
+            d[f"nwp_sin_wd{h}"] = np.sin(rad)
+            d[f"nwp_cos_wd{h}"] = np.cos(rad)
+
+        # UTC -> lokale naive Zeit
+        ts_local = (
+            pd.DatetimeIndex(d["timestamp_utc"])
+            .tz_convert(PRODUCTION_TZ)
+            .tz_localize(None)
+        )
+        d["timestamp"] = ts_local
+        d["site"] = site
+        d = d.drop(columns=["timestamp_utc"])
+        d = d.drop_duplicates(["site", "timestamp"], keep="first")
+        frames.append(d)
+
+        if verbose:
+            print(f"  {site}: {len(d):,} Stunden NWP geladen "
+                  f"({d['timestamp'].min().date()} .. {d['timestamp'].max().date()})")
+
+    if not frames:
+        return None
+    return pd.concat(frames, ignore_index=True)
+
+
+# ---------------------------------------------------------------------------
+# 6) Zeitachsen harmonisieren & Bloecke mergen
 # ---------------------------------------------------------------------------
 
 def harmonize_timestamps(prod_hourly: pd.DataFrame) -> pd.DatetimeIndex:
@@ -519,13 +671,14 @@ def harmonize_timestamps(prod_hourly: pd.DataFrame) -> pd.DatetimeIndex:
 def merge_feature_blocks(prod_hourly: pd.DataFrame,
                          era5: pd.DataFrame | None,
                          solar: pd.DataFrame | None,
-                         cams: pd.DataFrame | None = None) -> pd.DataFrame:
+                         cams: pd.DataFrame | None = None,
+                         nwp: pd.DataFrame | None = None) -> pd.DataFrame:
     """
     Left-Merge der Bloecke pro [site, timestamp] auf Produktionsbasis.
-    Produktion = Master; ERA5, Solar, CAMS werden angehaengt (graceful, falls None).
+    Produktion = Master; ERA5, Solar, CAMS, NWP werden angehaengt (graceful, falls None).
     """
     out = prod_hourly.copy()
-    for block in (era5, solar, cams):
+    for block in (era5, solar, cams, nwp):
         if block is not None:
             out = out.merge(block, on=["site", "timestamp"], how="left")
     return out.sort_values(["site", "timestamp"]).reset_index(drop=True)
@@ -630,6 +783,13 @@ CAMS_FEATURES = [
     "cams_clearsky_ghi", "cams_clearsky_dni", "cams_clearsky_dhi",
     "cams_clearsky_index",
 ]
+# NWP-Forecast-Features (Open-Meteo ECMWF IFS HRES) -- kein Oracle-Problem
+NWP_WIND_FEATURES = ["nwp_ws100", "nwp_wd100", "nwp_sin_wd100", "nwp_cos_wd100"]
+NWP_FULL_FEATURES = NWP_WIND_FEATURES + [
+    "nwp_ws10", "nwp_wd10", "nwp_sin_wd10", "nwp_cos_wd10",
+    "nwp_temp2m", "nwp_surface_pressure", "nwp_total_cloud_cover",
+    "nwp_wind_shear_diff", "nwp_wind_shear_ratio",
+]
 CALENDAR_FEATURES = ["hour_sin", "hour_cos", "dow_sin", "dow_cos", "month"]
 
 
@@ -651,7 +811,12 @@ def feature_groups() -> dict[str, list[str]]:
         "H_era5_solar_noprod":     ERA5_FULL_FEATURES + SOLAR_FEATURES + CALENDAR_FEATURES,
         # -- Mit CAMS-Satellitendaten (I-J, erfordern ADS-Download) --
         "I_prod_era5_cams":        prod + ERA5_FULL_FEATURES + SOLAR_ASTRO_ONLY + CAMS_FEATURES + CALENDAR_FEATURES,
-        "J_all":                   prod + ERA5_FULL_FEATURES + SOLAR_ASTRO_ONLY + CAMS_FEATURES + CALENDAR_FEATURES,
+        "J_all_era5":              prod + ERA5_FULL_FEATURES + SOLAR_ASTRO_ONLY + CAMS_FEATURES + CALENDAR_FEATURES,
+        # -- NWP-Forecast-Features / Open-Meteo ECMWF IFS (K-N, kein Oracle-Problem) --
+        "K_prod_nwpwind":          prod + NWP_WIND_FEATURES + CALENDAR_FEATURES,
+        "L_prod_nwpfull":          prod + NWP_FULL_FEATURES + CALENDAR_FEATURES,
+        "M_prod_nwp_solar":        prod + NWP_FULL_FEATURES + SOLAR_FEATURES + CALENDAR_FEATURES,
+        "N_prod_nwp_cams":         prod + NWP_FULL_FEATURES + SOLAR_ASTRO_ONLY + CAMS_FEATURES + CALENDAR_FEATURES,
     }
 
 

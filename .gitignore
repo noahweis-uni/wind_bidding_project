@@ -50,6 +50,7 @@ results/models/*.joblib
 # Rohdaten (groß, nicht ins Repo)
 data/raw/weather/
 data/raw/satellite/
+data/raw/nwp/
 
 # CDS/ADS API-Keys (außerhalb des Projekts in ~/.cdsapirc / ~/.adsapirc)
 .cdsapirc
