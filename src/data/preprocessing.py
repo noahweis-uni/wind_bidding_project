@@ -5,7 +5,7 @@
 # Erzeugt aus vier Datenquellen einen modellfaehigen, STANDORTBEZOGENEN
 # stuendlichen Feature-Datensatz:
 #   1. Produktion  (SCADA-Messdaten der Windanlagen)         -> Zielvariable + Historie
-#   2. ERA5        (Copernicus CDS, Reanalyse, UTC)          -> Wetter-/NWP-Features
+#   2. ERA5        (Copernicus CDS, Reanalyse, UTC)          -> Wetter-Features (Perfect-Forecast-Baseline, s.u.)
 #   3. Solar/pvlib (berechnet aus Standort + Zeit)           -> astronomische Features
 #   4. CAMS        (Copernicus ADS, Meteosat/MSG, UTC)       -> Satellitenstrahlungs-Features
 #
@@ -14,6 +14,18 @@
 #   Credentials: ~/.adsapirc (url + key, nie ins Repo).
 #   Deckt 2004-heute ab (MSG-basiert, stundlich, ~4 km, geopunktuell).
 #   Liefert: GHI/DNI/DHI (gemessen) + Clear-Sky-Varianten + Clear-Sky-Index.
+#
+# ERA5 als Perfect-Forecast-Baseline:
+#   ERA5 ist eine Reanalyse (bestmoegliche Schaetzung des tatsaechlichen Wetters),
+#   keine operative NWP-Prognose. Als Modell-Input entspricht das einem "Oracle"-
+#   Modell mit perfektem Wetterwissen zur Gebotszeit -- was real nicht verfuegbar ist.
+#   Methodische Einschaenkung: Die Ergebnisse zeigen die obere Leistungsgrenze
+#   (Best-Case) eines wetterbasierten Gebotsmodells, nicht die operative Guete.
+#   In der Praxis wuerden ERA5-Features durch archivierte NWP-Forecasts ersetzt
+#   (z.B. ICON-EU oder GFS, ab ca. 2022 via Open-Meteo Historical Forecast API).
+#   Fuer den Projektzeitraum ab 2017 existiert kein frei zugaengliches NWP-Archiv,
+#   das eine konsistente Alternative bietet -- ERA5 wird daher bewusst als
+#   Perfect-Forecast-Baseline eingesetzt und ist als solche im Paper deklariert.
 #
 # Zeitzonen-Konvention (siehe harmonize_timestamps):
 #   - Produktion : lokale Zeit (Europe/Berlin, naiv)  -- ANNAHME, konfigurierbar
