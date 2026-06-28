@@ -1,0 +1,30 @@
+feature,beschreibung,quelle,einheit,gruppe
+power,Mittlere Anlagenleistung (Stunde),production,kW,target
+energy_mwh,Stundenenergie (power/1000),production,MWh,A-F
+wind_speed_obs,Gemessene Windgeschw. (SCADA),production,m/s,A-F
+ws100,ERA5 Windgeschw. 100 m,ERA5,m/s,"B,C,D,F,H"
+wd100,ERA5 Windrichtung 100 m,derived,deg,"B,C,D,F,H"
+sin_wd100/cos_wd100,Zyklische Windrichtung 100 m,derived,-,"B,C,D,F,H"
+ws10/wd10,ERA5 Wind 10 m + Richtung,ERA5/derived,m/s/deg,"C,D,F,H"
+temp2m,ERA5 2m-Temperatur,ERA5,K,"C,D,F,H"
+surface_pressure,ERA5 Oberflaechendruck,ERA5,Pa,"C,D,F,H"
+total_cloud_cover,ERA5 Gesamtbedeckungsgrad (TCC),ERA5,0-1,"C,D,F,H"
+wind_shear_diff,ws100 - ws10,derived,m/s,"C,D,F,H"
+wind_shear_ratio,ws100 / ws10,derived,-,"C,D,F,H"
+solar_zenith,Sonnen-Zenitwinkel (pvlib),pvlib,deg,"E,F,G,H,I,J"
+solar_azimuth,Sonnen-Azimut (pvlib),pvlib,deg,"E,F,G,H,I,J"
+clearsky_ghi,"Clear-Sky GHI (pvlib, Ineichen)",pvlib,W/m2,"E,F,G,H"
+clearsky_dni/dhi,Clear-Sky DNI/DHI (pvlib),pvlib,W/m2,"E,F,G,H"
+is_day,Tag-Indikator (zenith<90),pvlib,0/1,"E,F,G,H,I,J"
+cams_ghi,"CAMS GHI (Meteosat, gemessen)",CAMS/ADS,W/m2,"I,J"
+cams_dni,"CAMS DNI/BNI (Meteosat, gemessen)",CAMS/ADS,W/m2,"I,J"
+cams_dhi,"CAMS DHI (Meteosat, gemessen)",CAMS/ADS,W/m2,"I,J"
+cams_clearsky_ghi,CAMS Clear-Sky GHI (McClear),CAMS/ADS,W/m2,"I,J"
+cams_clearsky_dni,CAMS Clear-Sky DNI (McClear),CAMS/ADS,W/m2,"I,J"
+cams_clearsky_dhi,CAMS Clear-Sky DHI (McClear),CAMS/ADS,W/m2,"I,J"
+cams_clearsky_index,"GHI/Clear-Sky-GHI (Kt, CAMS)",derived,0-1.5,"I,J"
+hour_sin/cos,Zyklische Stunde,calendar,-,alle
+dow_sin/cos,Zyklischer Wochentag,calendar,-,alle
+month,Monat,calendar,1-12,alle
+"*_lag{1,2,3,6,12,24}h",Zeitverzoegerte Inputs,derived,wie Basis,Modell
+"*_rollmean/std{3,6,24}h",Rolling Mittel/Std,derived,wie Basis,Modell
