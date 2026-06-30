@@ -147,7 +147,6 @@ def fig_shap_bar():
     save(fig, "shap_bar_importance.png", 150)
 
 def fig_beeswarm(m, fname, fs=(12, 8)):
-    np.random.seed(42)  # SHAP-Jitter deterministisch -> reproduzierbare PNGs
     d = shap_data[(PP, m)]
     shap.summary_plot(d["shap_values"], np.asarray(d["X"]), feature_names=FEATURES, max_display=15, show=False)
     fig = plt.gcf(); fig.set_size_inches(*fs)
