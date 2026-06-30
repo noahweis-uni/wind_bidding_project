@@ -144,9 +144,16 @@ def load_production(
         site_name = site_dir.name
         files = sorted(site_dir.rglob("*.xlsx"))
 
+        # Auto-filter Obbach to 2023 if not specified
+        site_years = years
+        if site_name.lower() == "obbach" and years is None:
+            site_years = [2023]
+            if verbose:
+                print(f"[INFO] {site_name}: auto-filtering to 2023 (use years param to override)")
+
         # Nach Jahr filtern (Dateiname oder Ordnername muss Jahr enthalten)
-        if years is not None:
-            years_str = [str(y) for y in years]
+        if site_years is not None:
+            years_str = [str(y) for y in site_years]
             files = [
                 f for f in files
                 if any(y in f.name or y in f.parent.name for y in years_str)
@@ -160,14 +167,40 @@ def load_production(
         if verbose:
             print(f"\n{site_name}: {len(files)} Datei(en)")
 
+        # Pro Standort sammeln (für Obbach-Aggregation)
+        site_dfs = []
         for f in files:
             if verbose:
                 print(f"  Lade: {f.name}")
             df = _load_single_file(f, site_name)
             if df is not None and len(df) > 0:
-                all_dfs.append(df)
+                site_dfs.append(df)
             elif verbose:
-                print(f"    ⚠ übersprungen (leer oder Fehler)")
+                print(f"    [SKIP] uebersprungen (leer oder Fehler)")
+
+        # Obbach: aggregiere alle Turbinen (WEA 1-5) pro timestamp
+        if site_name.lower() == "obbach" and site_dfs:
+            # Aggregiere in chunks pro Datei bevor concat um RAM zu sparen
+            agg_dfs = []
+            for df in site_dfs:
+                agg = df.groupby("timestamp")[["power", "wind_speed", "site"]].agg(
+                    {"power": "mean", "wind_speed": "mean", "site": "first"}
+                ).reset_index()
+                agg_dfs.append(agg)
+            site_df_agg = pd.concat(agg_dfs, ignore_index=True)
+            # Finale aggregation
+            site_df_agg = (
+                site_df_agg
+                .groupby("timestamp")[["power", "wind_speed", "site"]]
+                .agg({"power": "mean", "wind_speed": "mean", "site": "first"})
+                .reset_index()
+            )
+            all_dfs.append(site_df_agg)
+            if verbose:
+                print(f"  -> Aggregiert zu {len(site_df_agg)} Stunden")
+        else:
+            # Andere Standorte: nur concatenieren
+            all_dfs.extend(site_dfs)
 
     if not all_dfs:
         raise ValueError("Keine Daten geladen.")
