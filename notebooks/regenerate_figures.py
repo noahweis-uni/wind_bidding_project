@@ -28,7 +28,7 @@ NWP = ROOT / "data" / "raw" / "nwp"
 MARKT = ROOT / "data" / "raw" / "Daten zu Marktpreisen"
 
 PLANTS = ["Schonungen", "Schwanfeld", "Trabelsdorf", "Obbach"]
-MODELS = {"xgb": "XGBoost", "qgb": "QGB", "qrf": "QRF"}
+MODELS = {"xgb": "XGBoost", "qgb": "QGB", "qrf": "QRF", "qr": "QR"}
 QUANTILES = [0.1, 0.25, 0.5, 0.75, 0.9]
 PP = "Schonungen"
 
@@ -109,7 +109,7 @@ def fig_pinball_single():
     pb = pd.read_csv(TAB / "pinball_evaluation.csv")
     sub = pb[pb["plant"] == PP]
     fig, ax = plt.subplots(figsize=(9, 5))
-    for mdl in ["xgb", "qgb", "qrf"]:
+    for mdl in ["xgb", "qgb", "qrf", "qr"]:
         s = sub[sub["model"] == mdl].sort_values("quantile")
         ax.plot(s["quantile"], s["pinball_loss"], marker="o", label=MODELS[mdl], color=MODEL_COLORS[mdl])
     ax.set_xlabel("Quantil τ"); ax.set_ylabel("Pinball-Loss"); ax.set_title(f"Pinball-Loss – {PP}")
@@ -242,7 +242,16 @@ def fig_heatmap_hour_month():
 
 # ================= NB05 model comparison =================
 def fig_model_comparison():
-    c = pd.read_csv(TAB / "model_comparison.csv")
+    from sklearn.metrics import mean_absolute_error, mean_squared_error
+    pbm = pd.read_csv(TAB / "pinball_evaluation.csv").groupby("model")["pinball_loss"].mean()
+    rows = []
+    for mdl in ["xgb", "qgb", "qrf", "qr"]:
+        maes, rmses = [], []
+        for p in PLANTS:
+            d = preds[p]; y = d["y_true"].values; q50 = d[f"{mdl}_q50"].values
+            maes.append(mean_absolute_error(y, q50)); rmses.append(np.sqrt(mean_squared_error(y, q50)))
+        rows.append({"model": MODELS[mdl], "MAE": float(np.mean(maes)), "RMSE": float(np.mean(rmses)), "Pinball": float(pbm[mdl])})
+    c = pd.DataFrame(rows); c.to_csv(TAB / "model_comparison.csv", index=False)
     fig, ax = plt.subplots(figsize=(10, 6)); x = np.arange(len(c)); w = 0.25
     for i, (metric, col) in enumerate([("MAE", "primary"), ("RMSE", "orange"), ("Pinball", "green")]):
         ax.bar(x + (i-1)*w, c[metric], w, label=metric, color=CRISP_COLORS[col])
@@ -254,7 +263,7 @@ def fig_pinball_over_quantiles():
     pb = pd.read_csv(TAB / "pinball_evaluation.csv")
     agg = pb.groupby(["model", "quantile"])["pinball_loss"].mean().reset_index()
     fig, ax = plt.subplots(figsize=(9, 5))
-    for mdl in ["xgb", "qgb", "qrf"]:
+    for mdl in ["xgb", "qgb", "qrf", "qr"]:
         s = agg[agg["model"] == mdl].sort_values("quantile")
         ax.plot(s["quantile"], s["pinball_loss"], marker="o", label=MODELS[mdl], color=MODEL_COLORS[mdl])
     ax.set_xlabel("Quantil τ"); ax.set_ylabel("Pinball-Loss"); ax.set_title("Pinball-Loss über Quantile")
@@ -263,7 +272,7 @@ def fig_pinball_over_quantiles():
 
 # ================= NB04 economics =================
 def base_of(m):
-    for k in ["Persistence", "Elastic_Net", "XGBoost", "QGB", "QRF", "Oracle"]:
+    for k in ["Persistence", "Elastic_Net", "Quantile_Regression", "XGBoost", "QGB", "QRF", "Oracle"]:
         if m.startswith(k): return k
     return m
 
@@ -295,28 +304,29 @@ def _econ_best_per_base(br):
 
 def fig_interpretable_vs_blackbox():
     br = pd.read_csv(TAB / "bidding_results.csv"); e = _econ_best_per_base(br)
-    best = e.groupby("base")["mean_nv_loss"].min().reindex(["Persistence", "Elastic_Net", "XGBoost", "QGB", "QRF"])
+    best = e.groupby("base")["mean_nv_loss"].min().reindex(["Persistence", "Elastic_Net", "Quantile_Regression", "XGBoost", "QGB", "QRF"])
     fig, ax = plt.subplots(figsize=(8, 5))
     colors = [MODEL_COLORS[b] for b in best.index]   # Persistence=grau via MODEL_COLORS
     ax.bar(best.index, best.values, color=colors)
     ax.set_ylabel("Bester NV-Verlust [EUR/MWh]")
-    ax.set_title("Interpretierbar (Persistence grau / Elastic Net grün) vs. Black-Box")
+    ax.set_title("Interpretierbar (grau/grün/violett) vs. Black-Box (orange/blau)")
     save(fig, "interpretable_vs_blackbox.png", 150)
 
 def fig_decision_aware():
     br = pd.read_csv(TAB / "bidding_results.csv"); e = _econ_best_per_base(br)
     econ = e.groupby("base")["mean_nv_loss"].min()
     pb = pd.read_csv(TAB / "pinball_evaluation.csv").groupby("model")["pinball_loss"].mean()
-    rows = [{"model": MODELS[m], "Pinball": pb[m], "NV": econ[{"xgb":"XGBoost","qgb":"QGB","qrf":"QRF"}[m]]} for m in ["xgb","qgb","qrf"]]
+    nvmap = {"xgb":"XGBoost","qgb":"QGB","qrf":"QRF","qr":"Quantile_Regression"}
+    rows = [{"model": MODELS[m], "Pinball": pb[m], "NV": econ[nvmap[m]]} for m in ["xgb","qgb","qrf","qr"]]
     df = pd.DataFrame(rows)
     fig, ax = plt.subplots(figsize=(9, 7))
-    offs = {"XGBoost": (8, 8), "QGB": (8, -14), "QRF": (-40, 8)}
+    offs = {"XGBoost": (8, 8), "QGB": (8, -14), "QRF": (-40, 8), "QR": (8, 8)}
     for _, r in df.iterrows():
         ax.scatter(r["Pinball"], r["NV"], s=110, color=MODEL_COLORS[r["model"]], zorder=3)
         ax.annotate(r["model"], (r["Pinball"], r["NV"]), xytext=offs.get(r["model"], (6, 6)),
                     textcoords="offset points", fontsize=11)
     ax.set_xlabel("Pinball-Loss (↓ besser)"); ax.set_ylabel("NV-Verlust [EUR/MWh] (↓ besser)")
-    ax.set_title("Decision-aware: Genauigkeit vs. ökonomischer Wert (probabilistische Modelle)")
+    ax.set_title("Decision-aware: Genauigkeit vs. ökonomischer Wert (prob. Modelle inkl. QR)")
     save(fig, "decision_aware_accuracy_vs_economics.png", 150)
 
 def fig_risk_profit():
@@ -348,7 +358,7 @@ def fig_crosssite_forecast_accuracy():
         axes[0].plot(x, vals, marker="o", ls=STYLE[c], label=n, color=MODEL_COLORS[c])
     axes[0].set_xticks(x); axes[0].set_xticklabels(sites, rotation=15); axes[0].set_ylabel("MAE [MWh]")
     axes[0].set_title("POINT Forecasts – MAE je Standort"); axes[0].legend()
-    for m in ["xgb", "qgb", "qrf"]:
+    for m in ["xgb", "qgb", "qrf", "qr"]:
         vals = [pb[(pb["plant"] == s) & (pb["model"] == m)]["pinball_loss"].values[0] for s in sites]
         axes[1].plot(x, vals, marker="o", label=MODELS[m], color=MODEL_COLORS[m])
     axes[1].set_xticks(x); axes[1].set_xticklabels(sites, rotation=15); axes[1].set_ylabel("Pinball-Loss")
@@ -359,8 +369,8 @@ def fig_crosssite_forecast_accuracy():
 def fig_crosssite_economic():
     br = pd.read_csv(TAB / "bidding_results.csv"); e = _econ_best_per_base(br)
     best = e.groupby(["scenario", "base"])["mean_nv_loss"].min().reset_index()
-    sites = sorted(best["scenario"].unique()); bases = ["Persistence", "Elastic_Net", "XGBoost", "QGB", "QRF"]
-    PT = {"Persistence": "Point", "Elastic_Net": "Point", "XGBoost": "Prob", "QGB": "Prob", "QRF": "Prob"}
+    sites = sorted(best["scenario"].unique()); bases = ["Persistence", "Elastic_Net", "Quantile_Regression", "XGBoost", "QGB", "QRF"]
+    PT = {"Persistence": "Point", "Elastic_Net": "Point", "Quantile_Regression": "Prob", "XGBoost": "Prob", "QGB": "Prob", "QRF": "Prob"}
     fig, ax = plt.subplots(figsize=(11, 6)); x = np.arange(len(bases))
     for s in sites:
         vals = [best[(best["scenario"] == s) & (best["base"] == b)]["mean_nv_loss"].values for b in bases]
@@ -371,7 +381,7 @@ def fig_crosssite_economic():
             ax.scatter(xi, vals[xi], marker="s" if PT[b] == "Point" else "o", color=SITE_COLORS[s], s=55, zorder=3)
     ax.axvline(1.5, color="gray", ls=":", lw=1)
     ax.text(0.5, ax.get_ylim()[1]*0.95, "Point", ha="center", fontsize=9, color="gray")
-    ax.text(3, ax.get_ylim()[1]*0.95, "Probabilistic", ha="center", fontsize=9, color="gray")
+    ax.text(3.5, ax.get_ylim()[1]*0.95, "Probabilistic", ha="center", fontsize=9, color="gray")
     ax.set_xticks(x); ax.set_xticklabels(bases, rotation=15); ax.set_ylabel("Bester NV-Verlust [EUR/MWh]")
     ax.set_title("Ökonomie je Standort – Quadrat = Point, Kreis = Probabilistic"); ax.legend(title="Standort", fontsize=8)
     save(fig, "crosssite_economic_point_vs_prob.png", 150)
@@ -482,6 +492,32 @@ def fig_weather():
     axes[1].set_ylabel("m/s"); axes[1].set_xlabel("Monat"); axes[1].legend(fontsize=8)
     plt.tight_layout(); save(fig, "weather_nwp_sites.png", 150)
 
+def fig_qr_coefficients():
+    fp = TAB / f"qr_coefficients_{PP.lower()}.csv"
+    if not fp.exists():
+        return
+    co = pd.read_csv(fp)
+    # Standardisieren fuer Vergleichbarkeit: beta * sigma_feature = Effekt einer 1-SD-Aenderung
+    Xstd = pd.Series(np.asarray(shap_data[(PP, "qgb")]["X"]).std(axis=0), index=FEATURES)
+    co["beta_z"] = co["beta_mean"] * co["feature"].map(Xstd)
+    piv = co.pivot_table(index="feature", columns="quantile", values="beta_z")
+    order = piv.abs().mean(axis=1).sort_values(ascending=False).head(12).index
+    piv = piv.loc[order]
+    vmax = float(np.nanmax(np.abs(piv.values))) or 1.0
+    fig, ax = plt.subplots(figsize=(9, 7))
+    im = ax.imshow(piv.values, aspect="auto", cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+    ax.set_xticks(range(len(piv.columns))); ax.set_xticklabels([f"q{int(q*100):02d}" for q in piv.columns])
+    ax.set_yticks(range(len(piv.index))); ax.set_yticklabels(piv.index)
+    for yi in range(len(piv.index)):
+        for xi in range(len(piv.columns)):
+            v = piv.values[yi, xi]
+            ax.text(xi, yi, f"{v:.2f}", ha="center", va="center", fontsize=7,
+                    color="white" if abs(v) > vmax * 0.5 else "black")
+    ax.set_xlabel("Quantil"); ax.set_ylabel("Feature")
+    ax.set_title(f"QR-Koeffizienten (standardisiert) je Feature x Quantil - {PP} (rot=positiv, blau=negativ)")
+    plt.colorbar(im, ax=ax, label="beta x sigma (Effekt 1-SD-Aenderung) [MWh]"); plt.tight_layout()
+    save(fig, f"qr_coefficients_{PP.lower()}.png", 150)
+
 ALL = [
     fig_forecast_vs_actual, fig_forecast_bands, fig_quantile_band_qrf, fig_pinball_single, fig_scatter,
     fig_shap_bar,
@@ -495,7 +531,7 @@ ALL = [
     fig_bidding_portfolio, fig_interpretable_vs_blackbox, fig_decision_aware, fig_risk_profit,
     fig_crosssite_forecast_accuracy, fig_crosssite_economic, fig_crosssite_shap_importance,
     fig_crosssite_dependence, fig_crosssite_seasonal, fig_crosssite_bidfailure,
-    fig_bidfailure_conditions, fig_bidfailure_heatmap, fig_weather,
+    fig_bidfailure_conditions, fig_bidfailure_heatmap, fig_weather, fig_qr_coefficients,
 ]
 
 if __name__ == "__main__":

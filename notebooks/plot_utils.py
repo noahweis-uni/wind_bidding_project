@@ -16,6 +16,7 @@ CRISP_COLORS = {
     "yellow":    "#FFC000",
     "red":       "#C00000",
     "gray":      "#7F7F7F",
+    "purple":    "#7030A0",   # Quantile Regression (interpretierbar, probabilistisch)
 }
 
 MODEL_COLORS = {
@@ -32,6 +33,9 @@ MODEL_COLORS = {
     "Elastic_Net": CRISP_COLORS["green"],
     "elastic_net": CRISP_COLORS["green"],
     "Oracle":      CRISP_COLORS["yellow"],
+    "QR":                  CRISP_COLORS["purple"],   # Quantile Regression (interpretierbar + probabilistisch)
+    "qr":                  CRISP_COLORS["purple"],
+    "Quantile_Regression": CRISP_COLORS["purple"],
 }
 
 SITE_COLORS = {
