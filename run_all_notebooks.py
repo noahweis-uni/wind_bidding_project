@@ -15,16 +15,15 @@ NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
 LOGS_DIR = PROJECT_ROOT / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
-# All notebooks to run (including all 03 variants)
+# Aktuelle Pipeline (alte Single-Day/Day-Ahead-Notebooks liegen in notebooks/archive/)
 NOTEBOOKS = [
     ("01_data_understanding.ipynb", "Data Understanding (Exploration)"),
     ("02_preprocessing.ipynb", "Preprocessing (NWP Download + Feature Engineering)"),
-    ("03_forecasting_models.ipynb", "Forecasting Models (Day-Ahead)"),
-    ("03_single_day_forecasting.ipynb", "Single-Day Forecasting"),
-    ("03_single_day_forecasting_with_day_selection.ipynb", "Single-Day Forecasting (with Day Selection)"),
-    ("04_bidding_evaluation.ipynb", "Bidding Evaluation (Economic Assessment)"),
-    ("05_xai_analysis.ipynb", "XAI Analysis (SHAP Explanations)"),
+    ("03_walkforward_shap.ipynb", "Walk-Forward Forecasting + Online SHAP (per-Tag, parallel)"),
+    ("04_bidding_evaluation.ipynb", "Bidding Evaluation (Newsvendor + DR-Pinson)"),
+    ("05_xai_analysis.ipynb", "xAI Analysis (SHAP + QR-Koeffizienten)"),
 ]
+# Hinweis: Figures werden zentral via notebooks/regenerate_figures.py erzeugt (CRISP-DM-Style).
 
 def get_log_filename(notebook_file):
     """Generate log filename for a notebook"""
@@ -69,7 +68,7 @@ def run_notebook(notebook_file, description):
                 cwd=str(PROJECT_ROOT),
                 capture_output=True,
                 text=True,
-                timeout=3600,  # 1 hour timeout
+                timeout=10800,  # 3 hour timeout for intensive model training
             )
 
             # Write full output to log
