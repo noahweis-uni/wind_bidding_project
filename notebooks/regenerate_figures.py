@@ -201,7 +201,7 @@ def fig_force():
     sv_red = np.concatenate([sv[i][keep], [sv[i][rest].sum()]])
     names = [f"{FEATURES[j]}={X[i][j]:.2f}" for j in keep] + [f"+{len(rest)} weitere"]
     shap.plots.force(base, sv_red, feature_names=names, matplotlib=True, show=False)
-    fig = plt.gcf(); fig.set_size_inches(16, 3)
+    fig = plt.gcf(); fig.set_size_inches(20, 3)
     for t in fig.axes[0].texts:
         t.set_fontsize(8)
     plt.tight_layout(); save(fig, f"shap_force_qgb_{PP.lower()}.png", 200)
@@ -269,13 +269,16 @@ def base_of(m):
 def fig_bidding_portfolio():
     br = pd.read_csv(TAB / "bidding_results.csv")
     port = br[br["scenario"] == "Portfolio"].sort_values("mean_nv_loss")
+    import matplotlib.colors as mc
+    def lighten(hexc, amt=0.45):
+        c = np.array(mc.to_rgb(hexc)); return tuple(c + (1 - c) * amt)
     def col(m):
         b = base_of(m)
         if b == "Oracle": return CRISP_COLORS["yellow"]
         if "DR-" in m: return CRISP_COLORS["red"]
         if b in ("Persistence", "Elastic_Net"): return MODEL_COLORS[b]
-        c = MODEL_COLORS.get(b, CRISP_COLORS["primary"])
-        return c
+        base_c = MODEL_COLORS.get(b, CRISP_COLORS["primary"])
+        return lighten(base_c) if "q50" in m else base_c   # q50 heller als tau*
     colors = [col(m) for m in port["model"]]
     fig, ax = plt.subplots(figsize=(12, 10))
     ax.barh(port["model"], port["mean_nv_loss"], color=colors)
