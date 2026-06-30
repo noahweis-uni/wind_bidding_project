@@ -54,6 +54,12 @@ NWP_COLS = [
     "nwp_cloud_cover",
 ]
 
+# Abgeleitete NWP-Features (werden in add_nwp_derived_features() berechnet)
+NWP_DERIVED_COLS = [
+    "nwp_wind_power_proxy",  # ws100^3 — Leistung proportional zu v^3
+    "nwp_wind_ramp",         # stündliche Windänderungsrate
+]
+
 # Feature-Sets fuer die zwei Szenarien
 # Szenario A: Nur historische SCADA-Lags (kein NWP)
 FEATURES_HISTORICAL = [
@@ -66,14 +72,18 @@ FEATURES_HISTORICAL = [
     "dow_sin",  "dow_cos",
 ]
 
-# Szenario B: NWP + SCADA-Lags
+# Szenario B: NWP + SCADA-Lags + abgeleitete Features
 FEATURES_NWP = [
-    # NWP Zielstunden-Vorhersage (lag_0, methodisch korrekt da Vorhersage)
+    # NWP Zielstunden-Vorhersage (lag_0)
     "nwp_ws100",
     "nwp_wd100",
+    "nwp_ws10",
     "nwp_temp2m",
     "nwp_surface_pressure",
     "nwp_cloud_cover",
+    # Abgeleitete NWP-Features (physikalisch motiviert)
+    "nwp_wind_power_proxy",  # ws100^3: Leistungskennlinie
+    "nwp_wind_ramp",         # Windänderungsrate
     # SCADA-Produktionshistorie (Day-Ahead-konform, lag_24)
     "energy_lag_24",
     "energy_lag_48",
@@ -82,6 +92,35 @@ FEATURES_NWP = [
     "hour_sin", "hour_cos",
     "dow_sin",  "dow_cos",
 ]
+
+
+def add_nwp_derived_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Berechnet abgeleitete NWP-Features nach dem Merge.
+    Muss NACH merge_nwp_into_dataset() aufgerufen werden.
+
+    Neue Spalten:
+        nwp_wind_power_proxy  – ws100^3: Leistung proportional zu v^3
+                                (physikalische Windleistungskennlinie)
+        nwp_wind_ramp         – stündliche Änderungsrate der Windgeschwindigkeit
+                                (Rampen verursachen hohe Imbalance-Kosten)
+    """
+    df = df.copy()
+
+    if "nwp_ws100" not in df.columns:
+        raise ValueError(
+            "Spalte 'nwp_ws100' nicht gefunden. "
+            "Bitte zuerst merge_nwp_into_dataset() aufrufen."
+        )
+
+    # Windleistungs-Proxy: P ∝ v³ (aus Windleistungskennlinie)
+    df["nwp_wind_power_proxy"] = df["nwp_ws100"] ** 3
+
+    # Windrampe: stündliche Änderungsrate der Windgeschwindigkeit
+    # (positiv = Wind nimmt zu, negativ = Wind nimmt ab)
+    df["nwp_wind_ramp"] = df["nwp_ws100"].diff().fillna(0)
+
+    return df
 
 
 def load_nwp(
@@ -194,4 +233,5 @@ def load_and_merge_nwp(
     FEATURES = FEATURES_NWP
     """
     df_nwp = load_nwp(site=site, nwp_dir=nwp_dir, verbose=verbose)
-    return merge_nwp_into_dataset(df_scada, df_nwp)
+    df_merged = merge_nwp_into_dataset(df_scada, df_nwp)
+    return add_nwp_derived_features(df_merged)

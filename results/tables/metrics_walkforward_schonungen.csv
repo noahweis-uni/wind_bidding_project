@@ -1,0 +1,4 @@
+model,MAE,RMSE,R2,Bias,Bias_pct
+elastic_net,166.25,255.7,0.7139,8.42,2.28
+xgboost,164.56,257.42,0.71,-6.56,-1.77
+persistence_24h,349.32,533.08,-0.2436,0.25,0.07
