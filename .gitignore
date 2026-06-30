@@ -55,3 +55,6 @@ data/raw/nwp/
 # CDS/ADS API-Keys (außerhalb des Projekts in ~/.cdsapirc / ~/.adsapirc)
 .cdsapirc
 .adsapirc
+
+# Grosse abgeleitete Feature-CSVs (regenerierbar aus final_dataset)
+data/processed/features_*.csv
