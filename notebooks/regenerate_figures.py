@@ -79,7 +79,7 @@ def fig_forecast_vs_actual():
     m = preds[PP].sort_values("timestamp").iloc[:28*24]
     fig, ax = plt.subplots(figsize=(14, 5))
     ax.plot(m["timestamp"], m["y_true"], color="black", lw=1.3, label="Ist (Actual)")
-    for col, lbl, key in [("elastic_net", "Elastic Net", "elastic_net"), ("xgb_q50", "XGBoost q50", "xgb"), ("qrf_q50", "QRF q50", "qrf")]:
+    for col, lbl, key in [("elastic_net", "Elastic Net", "elastic_net"), ("qr_q50", "QR q50", "qr"), ("xgb_q50", "XGBoost q50", "xgb"), ("qrf_q50", "QRF q50", "qrf")]:
         ax.plot(m["timestamp"], m[col], lw=0.9, alpha=0.85, label=lbl, color=MODEL_COLORS[key])
     ax.set_title(f"Prognose vs. Ist – {PP}"); ax.set_ylabel("Energie [MWh]"); ax.set_xlabel("Zeit")
     ax.legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize=9)
@@ -119,14 +119,16 @@ def fig_pinball_single():
 def fig_scatter():
     pred = preds[PP]
     sm = [("persistence", "Persistence", "gray"), ("arima", "ARIMA", "light"), ("elastic_net", "Elastic Net", "green"),
-          ("xgb_q50", "XGBoost", "orange"), ("qgb_q50", "QGB", "primary"), ("qrf_q50", "QRF", "secondary")]
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+          ("qr_q50", "QR", "purple"), ("xgb_q50", "XGBoost", "orange"), ("qgb_q50", "QGB", "primary"), ("qrf_q50", "QRF", "secondary")]
+    fig, axes = plt.subplots(2, 4, figsize=(19, 10))
     y = pred["y_true"].values; lim = float(np.nanpercentile(y, 99))
     for ax, (col, name, ckey) in zip(axes.ravel(), sm):
         ax.scatter(y, pred[col].values, s=4, alpha=0.15, color=CRISP_COLORS[ckey])
         ax.plot([0, lim], [0, lim], "k--", lw=1)
         ax.set_xlim(0, lim); ax.set_ylim(0, lim); ax.set_title(name)
         ax.set_xlabel("Ist [MWh]"); ax.set_ylabel("Prognose [MWh]")
+    for ax in axes.ravel()[len(sm):]:
+        ax.axis("off")
     plt.suptitle(f"Ist vs. Prognose – {PP}"); plt.tight_layout()
     save(fig, f"scatter_actual_pred_{PP.lower()}.png", 150)
 
@@ -304,12 +306,19 @@ def _econ_best_per_base(br):
 
 def fig_interpretable_vs_blackbox():
     br = pd.read_csv(TAB / "bidding_results.csv"); e = _econ_best_per_base(br)
-    best = e.groupby("base")["mean_nv_loss"].min().reindex(["Persistence", "ARIMA", "Elastic_Net", "Quantile_Regression", "XGBoost", "QGB", "QRF"])
-    fig, ax = plt.subplots(figsize=(8, 5))
-    colors = [MODEL_COLORS[b] for b in best.index]   # Persistence=grau via MODEL_COLORS
-    ax.bar(best.index, best.values, color=colors)
+    order = ["Persistence", "ARIMA", "Elastic_Net", "Quantile_Regression", "XGBoost", "QGB", "QRF"]
+    n_interp = 4   # Persistence, ARIMA, Elastic_Net, Quantile_Regression sind interpretierbar; Rest black-box
+    best = e.groupby("base")["mean_nv_loss"].min().reindex(order)
+    fig, ax = plt.subplots(figsize=(9, 5))
+    colors = [MODEL_COLORS[b] for b in best.index]
+    x = np.arange(len(best))
+    ax.bar(x, best.values, color=colors)
+    ax.set_xticks(x); ax.set_xticklabels(best.index, rotation=15)
+    ax.axvline(n_interp - 0.5, color="gray", ls=":", lw=1)
+    ax.text((n_interp - 1) / 2, ax.get_ylim()[1] * 0.95, "Interpretierbar", ha="center", fontsize=9, color="gray")
+    ax.text(n_interp + (len(order) - n_interp - 1) / 2, ax.get_ylim()[1] * 0.95, "Black-Box", ha="center", fontsize=9, color="gray")
     ax.set_ylabel("Bester NV-Verlust [EUR/MWh]")
-    ax.set_title("Interpretierbar (grau/grün/violett) vs. Black-Box (orange/blau)")
+    ax.set_title("Interpretierbar vs. Black-Box (ökonomisch)")
     save(fig, "interpretable_vs_blackbox.png", 150)
 
 def fig_decision_aware():
@@ -334,7 +343,9 @@ def fig_risk_profit():
     y = dfp["y_true"].values
     fig, ax = plt.subplots(figsize=(10, 5))
     series = [("Elastic Net", dfp["elastic_net"].values, MODEL_COLORS["elastic_net"]),
-              ("QGB τ*", qbid(dfp, "qgb", tau_star), MODEL_COLORS["qgb"])]
+              ("ARIMA", dfp["arima"].values, MODEL_COLORS["arima"]),
+              ("QGB τ*", qbid(dfp, "qgb", tau_star), MODEL_COLORS["qgb"]),
+              ("QR τ*", qbid(dfp, "qr", tau_star), MODEL_COLORS["qr"])]
     allp = []
     for lbl, bid, c in series:
         pr = profit(np.clip(bid, 0, None), y, dfp["da_price"].values, dfp["rebap"].values); allp.append(pr)
@@ -435,16 +446,18 @@ def fig_crosssite_seasonal():
     save(fig, "crosssite_seasonal_wind.png", 150)
 
 def fig_crosssite_bidfailure():
-    fig, ax = plt.subplots(figsize=(10, 6)); markers = {"Schonungen": "o", "Schwanfeld": "s", "Trabelsdorf": "^", "Obbach": "D"}
+    fig, ax = plt.subplots(figsize=(11, 6)); markers = {"Schonungen": "o", "Schwanfeld": "s", "Trabelsdorf": "^", "Obbach": "D"}
     for s in PLANTS:
         det = pd.read_csv(FC / f"bidding_detail_{s.lower()}.csv", parse_dates=["timestamp"])
         nwp = pd.read_csv(NWP / f"nwp_{s.lower()}.csv", parse_dates=["timestamp"])[["timestamp", "nwp_ws100"]]
-        fa = det.merge(nwp, on="timestamp", how="left")
-        b = np.linspace(fa["nwp_ws100"].min(), fa["nwp_ws100"].max(), 20); fa["wb"] = np.digitize(fa["nwp_ws100"], b)
-        g = fa.groupby("wb").agg(ws=("nwp_ws100", "mean"), loss=("nv_loss", "mean"))
-        ax.plot(g["ws"], g["loss"], marker=markers[s], ms=4, label=s, color=SITE_COLORS[s])
+        for model, ls, alpha in [("QGB", "-", 1.0), ("QR", "--", 0.65)]:
+            fa = det[det["model"] == model].merge(nwp, on="timestamp", how="left")
+            b = np.linspace(fa["nwp_ws100"].min(), fa["nwp_ws100"].max(), 20); fa["wb"] = np.digitize(fa["nwp_ws100"], b)
+            g = fa.groupby("wb").agg(ws=("nwp_ws100", "mean"), loss=("nv_loss", "mean"))
+            ax.plot(g["ws"], g["loss"], marker=markers[s], ms=4, ls=ls, alpha=alpha, label=f"{s} ({model})", color=SITE_COLORS[s])
     ax.set_xlabel("nwp_ws100 [m/s]"); ax.set_ylabel("mean NV-Verlust")
-    ax.set_title("Gebotsverlust: NV-Loss vs. Windgeschwindigkeit × Standort (QGB τ*)"); ax.legend()
+    ax.set_title("Gebotsverlust: NV-Loss vs. Windgeschwindigkeit × Standort (QGB durchgezogen, QR gestrichelt)")
+    ax.legend(fontsize=7, ncol=2)
     save(fig, "crosssite_bidfailure_wind.png", 150)
 
 def fig_bidfailure_conditions():
@@ -452,26 +465,32 @@ def fig_bidfailure_conditions():
     nwp = pd.read_csv(NWP / f"nwp_{PP.lower()}.csv", parse_dates=["timestamp"])[["timestamp", "nwp_ws100"]]
     fa = det.merge(nwp, on="timestamp", how="left")
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    b = np.linspace(fa["nwp_ws100"].min(), fa["nwp_ws100"].max(), 20); fa["wb"] = np.digitize(fa["nwp_ws100"], b)
-    g = fa.groupby("wb").agg(ws=("nwp_ws100", "mean"), loss=("nv_loss", "mean"))
-    axes[0].plot(g["ws"], g["loss"], marker="o", color=CRISP_COLORS["primary"])
-    axes[0].set_xlabel("Windgeschwindigkeit [m/s]"); axes[0].set_ylabel("mean NV-Verlust"); axes[0].set_title("Gebotsverlust vs. Windgeschwindigkeit")
-    b2 = np.linspace(fa["q_spread"].min(), fa["q_spread"].quantile(0.99), 20); fa["sb"] = np.digitize(fa["q_spread"], b2)
-    g2 = fa.groupby("sb").agg(sp=("q_spread", "mean"), loss=("nv_loss", "mean"))
-    axes[1].plot(g2["sp"], g2["loss"], marker="o", color=CRISP_COLORS["orange"])
-    axes[1].set_xlabel("Quantil-Spread q90–q10 (Unsicherheit)"); axes[1].set_ylabel("mean NV-Verlust"); axes[1].set_title("Gebotsverlust vs. Prognose-Unsicherheit")
+    for model, color, ls in [("QGB", CRISP_COLORS["primary"], "-"), ("QR", CRISP_COLORS["purple"], "--")]:
+        sub = fa[fa["model"] == model].copy()
+        b = np.linspace(sub["nwp_ws100"].min(), sub["nwp_ws100"].max(), 20); sub["wb"] = np.digitize(sub["nwp_ws100"], b)
+        g = sub.groupby("wb").agg(ws=("nwp_ws100", "mean"), loss=("nv_loss", "mean"))
+        axes[0].plot(g["ws"], g["loss"], marker="o", ls=ls, color=color, label=model)
+        b2 = np.linspace(sub["q_spread"].min(), sub["q_spread"].quantile(0.99), 20); sub["sb"] = np.digitize(sub["q_spread"], b2)
+        g2 = sub.groupby("sb").agg(sp=("q_spread", "mean"), loss=("nv_loss", "mean"))
+        axes[1].plot(g2["sp"], g2["loss"], marker="o", ls=ls, color=color, label=model)
+    axes[0].set_xlabel("Windgeschwindigkeit [m/s]"); axes[0].set_ylabel("mean NV-Verlust"); axes[0].set_title("Gebotsverlust vs. Windgeschwindigkeit"); axes[0].legend()
+    axes[1].set_xlabel("Quantil-Spread q90–q10 (Unsicherheit)"); axes[1].set_ylabel("mean NV-Verlust"); axes[1].set_title("Gebotsverlust vs. Prognose-Unsicherheit"); axes[1].legend()
     plt.tight_layout(); save(fig, f"bid_failure_conditions_{PP.lower()}.png", 150)
 
 def fig_bidfailure_heatmap():
     det = pd.read_csv(FC / f"bidding_detail_{PP.lower()}.csv", parse_dates=["timestamp"])
     det["hour"] = det["timestamp"].dt.hour; det["month"] = det["timestamp"].dt.month
-    grid = det.groupby(["hour", "month"])["nv_loss"].mean().unstack("month")
-    fig, ax = plt.subplots(figsize=(14, 8)); im = ax.imshow(grid.values, aspect="auto", cmap=crisp_cmap(), origin="lower")
-    ax.set_xticks(range(grid.shape[1])); ax.set_xticklabels([MONTH_NAMES_DE[c-1] for c in grid.columns])
-    ax.set_yticks(range(grid.shape[0])); ax.set_yticklabels(grid.index)
-    ax.set_xlabel("Monat"); ax.set_ylabel("Stunde des Tages")
-    ax.set_title(f"Gebotsverlust (NV-Loss) über Stunde × Monat – {PP}")
-    plt.colorbar(im, ax=ax, label="mean NV-Verlust"); plt.tight_layout()
+    grids = {m: det[det["model"] == m].groupby(["hour", "month"])["nv_loss"].mean().unstack("month") for m in ["QGB", "QR"]}
+    vmax = max(g.values.max() for g in grids.values())
+    fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+    for ax, model in zip(axes, ["QGB", "QR"]):
+        grid = grids[model]
+        im = ax.imshow(grid.values, aspect="auto", cmap=crisp_cmap(), origin="lower", vmin=0, vmax=vmax)
+        ax.set_xticks(range(grid.shape[1])); ax.set_xticklabels([MONTH_NAMES_DE[c-1] for c in grid.columns])
+        ax.set_yticks(range(grid.shape[0])); ax.set_yticklabels(grid.index)
+        ax.set_xlabel("Monat"); ax.set_ylabel("Stunde des Tages"); ax.set_title(f"{model} – {PP}")
+        plt.colorbar(im, ax=ax, label="mean NV-Verlust")
+    fig.suptitle("Gebotsverlust (NV-Loss) über Stunde × Monat"); plt.tight_layout()
     save(fig, f"bid_failure_heatmap_{PP.lower()}.png", 150)
 
 # ================= NB01 weather =================

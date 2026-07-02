@@ -1,0 +1,78 @@
+[NbConvertApp] Converting notebook notebooks/04_bidding_evaluation.ipynb to notebook
+C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\zmq\_future.py:718: RuntimeWarning: Proactor event loop does not implement add_reader family of methods required for zmq. Registering an additional selector thread for add_reader support via tornado. Use `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` to avoid this warning.
+  self._get_loop()
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\__main__.py", line 5, in <module>
+    main()
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\jupyter_core\application.py", line 284, in launch_instance
+    super().launch_instance(argv=argv, **kwargs)
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\traitlets\config\application.py", line 1075, in launch_instance
+    app.start()
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\nbconvertapp.py", line 420, in start
+    self.convert_notebooks()
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\nbconvertapp.py", line 597, in convert_notebooks
+    self.convert_single_notebook(notebook_filename)
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\nbconvertapp.py", line 563, in convert_single_notebook
+    output, resources = self.export_single_notebook(
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\nbconvertapp.py", line 487, in export_single_notebook
+    output, resources = self.exporter.from_filename(
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\exporters\exporter.py", line 201, in from_filename
+    return self.from_file(f, resources=resources, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\exporters\exporter.py", line 220, in from_file
+    return self.from_notebook_node(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\exporters\notebook.py", line 36, in from_notebook_node
+    nb_copy, resources = super().from_notebook_node(nb, resources, **kw)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\exporters\exporter.py", line 154, in from_notebook_node
+    nb_copy, resources = self._preprocess(nb_copy, resources)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\exporters\exporter.py", line 353, in _preprocess
+    nbc, resc = preprocessor(nbc, resc)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\preprocessors\base.py", line 48, in __call__
+    return self.preprocess(nb, resources)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\preprocessors\execute.py", line 103, in preprocess
+    self.preprocess_cell(cell, resources, index)
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbconvert\preprocessors\execute.py", line 124, in preprocess_cell
+    cell = self.execute_cell(cell, index, store_history=True)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\jupyter_core\utils\__init__.py", line 165, in wrapped
+    return loop.run_until_complete(inner)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python312\Lib\asyncio\base_events.py", line 684, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbclient\client.py", line 1062, in async_execute_cell
+    await self._check_raise_for_error(cell, cell_index, exec_reply)
+  File "C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\nbclient\client.py", line 918, in _check_raise_for_error
+    raise CellExecutionError.from_cell_and_msg(cell, exec_reply_content)
+nbclient.exceptions.CellExecutionError: An error occurred while executing the following cell:
+------------------
+# Interpretierbar vs. Black-Box (oekonomisch)
+GROUPS = {"Persistence": "interpretierbar", "ARIMA": "interpretierbar", "Elastic_Net": "interpretierbar", "Quantile_Regression": "interpretierbar",
+          "XGBoost": "black-box", "QGB": "black-box", "QRF": "black-box"}
+econ_best["group"] = econ_best["model"].map(GROUPS)
+print(econ_best.groupby("group")["econ_nv_loss"].agg(["min", "mean"]).round(3))
+print("
+Hinweis: interpretierbar = Persistence/ARIMA/Elastic_Net (Punkt) + Quantile_Regression (probabilistisch, taeglich neu gefittet in NB03).")
+fig, ax = plt.subplots(figsize=(8, 5))
+colors = ["#2ca02c" if GROUPS[m] == "interpretierbar" else "#d62728" for m in econ_best["model"]]
+ax.bar(econ_best["model"], econ_best["econ_nv_loss"], color=colors)
+ax.set_ylabel("Bester NV-Loss"); ax.set_title("Interpretierbar (gruen) vs. Black-Box (rot)")
+plt.tight_layout(); plt.savefig(FIGURES_DIR / "interpretable_vs_blackbox.png", dpi=150); plt.show()
+------------------
+
+
+  [36mCell[39m[36m [39m[32mIn[11][39m[32m, line 6[39m
+[31m    [39m[31mprint("[39m
+          ^
+[31mSyntaxError[39m[31m:[39m unterminated string literal (detected at line 6)
+
+
