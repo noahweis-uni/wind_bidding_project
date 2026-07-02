@@ -272,7 +272,7 @@ def fig_pinball_over_quantiles():
 
 # ================= NB04 economics =================
 def base_of(m):
-    for k in ["Persistence", "Elastic_Net", "Quantile_Regression", "XGBoost", "QGB", "QRF", "Oracle"]:
+    for k in ["Persistence", "ARIMA", "Elastic_Net", "Quantile_Regression", "XGBoost", "QGB", "QRF", "Oracle"]:
         if m.startswith(k): return k
     return m
 
@@ -286,7 +286,7 @@ def fig_bidding_portfolio():
         b = base_of(m)
         if b == "Oracle": return CRISP_COLORS["yellow"]
         if "DR-" in m: return CRISP_COLORS["red"]
-        if b in ("Persistence", "Elastic_Net"): return MODEL_COLORS[b]
+        if b in ("Persistence", "ARIMA", "Elastic_Net"): return MODEL_COLORS[b]
         base_c = MODEL_COLORS.get(b, CRISP_COLORS["primary"])
         return lighten(base_c) if "q50" in m else base_c   # q50 heller als tau*
     colors = [col(m) for m in port["model"]]
@@ -304,7 +304,7 @@ def _econ_best_per_base(br):
 
 def fig_interpretable_vs_blackbox():
     br = pd.read_csv(TAB / "bidding_results.csv"); e = _econ_best_per_base(br)
-    best = e.groupby("base")["mean_nv_loss"].min().reindex(["Persistence", "Elastic_Net", "Quantile_Regression", "XGBoost", "QGB", "QRF"])
+    best = e.groupby("base")["mean_nv_loss"].min().reindex(["Persistence", "ARIMA", "Elastic_Net", "Quantile_Regression", "XGBoost", "QGB", "QRF"])
     fig, ax = plt.subplots(figsize=(8, 5))
     colors = [MODEL_COLORS[b] for b in best.index]   # Persistence=grau via MODEL_COLORS
     ax.bar(best.index, best.values, color=colors)
@@ -353,24 +353,26 @@ def fig_crosssite_forecast_accuracy():
     STYLE = {"persistence": ":", "arima": "--", "elastic_net": "-"}
     pb = pd.read_csv(TAB / "pinball_evaluation.csv").groupby(["plant", "model"])["pinball_loss"].mean().reset_index()
     fig, axes = plt.subplots(1, 2, figsize=(15, 5)); x = np.arange(len(sites))
-    for c, n in POINT.items():
-        vals = [mean_absolute_error(preds[s]["y_true"], preds[s][c]) for s in sites]
-        axes[0].plot(x, vals, marker="o", ls=STYLE[c], label=n, color=MODEL_COLORS[c])
-    axes[0].set_xticks(x); axes[0].set_xticklabels(sites, rotation=15); axes[0].set_ylabel("MAE [MWh]")
-    axes[0].set_title("POINT Forecasts – MAE je Standort"); axes[0].legend()
-    for m in ["xgb", "qgb", "qrf", "qr"]:
+    wp = 0.25
+    for i, (c, n) in enumerate(POINT.items()):
+        vals = [np.sqrt(np.mean((preds[s][c] - preds[s]["y_true"]) ** 2)) for s in sites]
+        axes[0].bar(x + (i - 1) * wp, vals, wp, label=n, color=MODEL_COLORS[c])
+    axes[0].set_xticks(x); axes[0].set_xticklabels(sites, rotation=15); axes[0].set_ylabel("RMSE [MWh]")
+    axes[0].set_title("POINT Forecasts – RMSE je Standort"); axes[0].legend()
+    wq = 0.2
+    for i, m in enumerate(["xgb", "qgb", "qrf", "qr"]):
         vals = [pb[(pb["plant"] == s) & (pb["model"] == m)]["pinball_loss"].values[0] for s in sites]
-        axes[1].plot(x, vals, marker="o", label=MODELS[m], color=MODEL_COLORS[m])
+        axes[1].bar(x + (i - 1.5) * wq, vals, wq, label=MODELS[m], color=MODEL_COLORS[m])
     axes[1].set_xticks(x); axes[1].set_xticklabels(sites, rotation=15); axes[1].set_ylabel("Pinball-Loss")
     axes[1].set_title("PROBABILISTIC Forecasts – Pinball je Standort"); axes[1].legend()
-    plt.suptitle("Forecast-Genauigkeit getrennt: Point (MAE) | Probabilistic (Pinball)"); plt.tight_layout()
+    plt.suptitle("Forecast-Genauigkeit getrennt: Point (RMSE) | Probabilistic (Pinball)"); plt.tight_layout()
     save(fig, "crosssite_forecast_accuracy.png", 150)
 
 def fig_crosssite_economic():
     br = pd.read_csv(TAB / "bidding_results.csv"); e = _econ_best_per_base(br)
     best = e.groupby(["scenario", "base"])["mean_nv_loss"].min().reset_index()
-    sites = sorted(best["scenario"].unique()); bases = ["Persistence", "Elastic_Net", "Quantile_Regression", "XGBoost", "QGB", "QRF"]
-    PT = {"Persistence": "Point", "Elastic_Net": "Point", "Quantile_Regression": "Prob", "XGBoost": "Prob", "QGB": "Prob", "QRF": "Prob"}
+    sites = sorted(best["scenario"].unique()); bases = ["Persistence", "ARIMA", "Elastic_Net", "Quantile_Regression", "XGBoost", "QGB", "QRF"]
+    PT = {"Persistence": "Point", "ARIMA": "Point", "Elastic_Net": "Point", "Quantile_Regression": "Prob", "XGBoost": "Prob", "QGB": "Prob", "QRF": "Prob"}
     fig, ax = plt.subplots(figsize=(11, 6)); x = np.arange(len(bases))
     for s in sites:
         vals = [best[(best["scenario"] == s) & (best["base"] == b)]["mean_nv_loss"].values for b in bases]
@@ -379,9 +381,9 @@ def fig_crosssite_economic():
         ax.plot(x, vals, "-", color=SITE_COLORS[s], label=s, alpha=0.9)
         for xi, b in enumerate(bases):
             ax.scatter(xi, vals[xi], marker="s" if PT[b] == "Point" else "o", color=SITE_COLORS[s], s=55, zorder=3)
-    ax.axvline(1.5, color="gray", ls=":", lw=1)
-    ax.text(0.5, ax.get_ylim()[1]*0.95, "Point", ha="center", fontsize=9, color="gray")
-    ax.text(3.5, ax.get_ylim()[1]*0.95, "Probabilistic", ha="center", fontsize=9, color="gray")
+    ax.axvline(2.5, color="gray", ls=":", lw=1)
+    ax.text(1.0, ax.get_ylim()[1]*0.95, "Point", ha="center", fontsize=9, color="gray")
+    ax.text(4.5, ax.get_ylim()[1]*0.95, "Probabilistic", ha="center", fontsize=9, color="gray")
     ax.set_xticks(x); ax.set_xticklabels(bases, rotation=15); ax.set_ylabel("Bester NV-Verlust [EUR/MWh]")
     ax.set_title("Ökonomie je Standort – Quadrat = Point, Kreis = Probabilistic"); ax.legend(title="Standort", fontsize=8)
     save(fig, "crosssite_economic_point_vs_prob.png", 150)
