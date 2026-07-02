@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "notebooks"))
 sys.path.insert(0, str(ROOT))
-from plot_utils import CRISP_COLORS, MODEL_COLORS, SITE_COLORS, MONTH_NAMES_DE, crisp_cmap, apply_style
+from plot_utils import CRISP_COLORS, MODEL_COLORS, SITE_COLORS, MONTH_NAMES_DE, crisp_cmap, apply_style, annotate_with_leaders, get_model_color
 from src.bidding.newsvendor import compute_costs, optimal_quantile, loss, profit
 import shap
 
@@ -329,14 +329,11 @@ def fig_decision_aware():
     rows = [{"model": MODELS[m], "Pinball": pb[m], "NV": econ[nvmap[m]]} for m in ["xgb","qgb","qrf","qr"]]
     df = pd.DataFrame(rows)
     fig, ax = plt.subplots(figsize=(9, 7))
-    offs = {"XGBoost": (8, 8), "QGB": (8, -14), "QRF": (-40, 8), "QR": (8, 8)}
-    for _, r in df.iterrows():
-        ax.scatter(r["Pinball"], r["NV"], s=110, color=MODEL_COLORS[r["model"]], zorder=3)
-        ax.annotate(r["model"], (r["Pinball"], r["NV"]), xytext=offs.get(r["model"], (6, 6)),
-                    textcoords="offset points", fontsize=11)
+    annotate_with_leaders(ax, df["Pinball"], df["NV"], df["model"], fontsize=11)
+    ax.margins(x=0.2, y=0.2)
     ax.set_xlabel("Pinball-Loss (↓ besser)"); ax.set_ylabel("NV-Verlust [EUR/MWh] (↓ besser)")
     ax.set_title("Decision-aware: Genauigkeit vs. ökonomischer Wert (prob. Modelle inkl. QR)")
-    save(fig, "decision_aware_accuracy_vs_economics.png", 150)
+    save(fig, "decision_aware_prob_only.png", 150)
 
 def fig_risk_profit():
     dfp = preds[PP].merge(prices[["timestamp", "rebap", "da_price"]], on="timestamp", how="inner")
@@ -513,6 +510,55 @@ def fig_weather():
     axes[1].set_ylabel("m/s"); axes[1].set_xlabel("Monat"); axes[1].legend(fontsize=8)
     plt.tight_layout(); save(fig, "weather_nwp_sites.png", 150)
 
+def fig_portfolio_diversification():
+    """Diversifikationseffekt: naive Standortsumme vs. tatsaechlicher Portfolio-NV-Loss,
+    je Modell (mean_nv_loss, q50-Strategie)."""
+    import matplotlib.patches as mpatches
+    br = pd.read_csv(TAB / "bidding_results.csv")
+    model_map = [
+        ("Persistence", "Persistence"), ("ARIMA", "ARIMA"), ("EN", "Elastic_Net"),
+        ("QGB", "QGB (q50)"), ("QRF", "QRF (q50)"), ("Q-XGBoost", "XGBoost (q50)"),
+        ("QR", "Quantile_Regression (q50)"),
+    ]
+
+    def v(scenario, model):
+        r = br[(br["scenario"] == scenario) & (br["model"] == model)]
+        return float(r["mean_nv_loss"].iloc[0])
+
+    labels, naive_vals, port_vals = [], [], []
+    for label, model in model_map:
+        naive = sum(v(s, model) for s in PLANTS)
+        port = v("Portfolio", model)
+        labels.append(label); naive_vals.append(naive); port_vals.append(port)
+
+    colors = [get_model_color(lbl) for lbl in labels]
+    x = np.arange(len(labels)); width = 0.35
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.bar(x - width / 2, naive_vals, width, color=colors, alpha=0.4, hatch="//",
+           edgecolor="black", linewidth=0.5)
+    ax.bar(x + width / 2, port_vals, width, color=colors, alpha=1.0,
+           edgecolor="black", linewidth=0.5)
+
+    for xi, naive, port in zip(x, naive_vals, port_vals):
+        reduction = (naive - port) / naive * 100
+        ax.text(xi + width / 2, port + 0.3, f"−{reduction:.1f} %".replace(".", ","),
+                ha="center", va="bottom", fontsize=9)
+
+    legend_handles = [
+        mpatches.Patch(facecolor="gray", alpha=0.4, hatch="//", edgecolor="black",
+                       label="Naive Summe (Σ Einzelstandorte)"),
+        mpatches.Patch(facecolor="gray", alpha=1.0, edgecolor="black",
+                       label="Portfolio (aggregiert)"),
+    ]
+    ax.legend(handles=legend_handles)
+    ax.set_xticks(x); ax.set_xticklabels(labels)
+    ax.set_ylabel("NV-Loss [EUR/MWh]")
+    ax.set_title("Diversifikationseffekt: Naive Summe vs. Portfolio-NV-Loss")
+    plt.tight_layout()
+    save(fig, "portfolio_diversification.png", 150)
+
+
 def fig_qr_coefficients():
     fp = TAB / f"qr_coefficients_{PP.lower()}.csv"
     if not fp.exists():
@@ -549,7 +595,7 @@ ALL = [
     fig_dependence_3panel, fig_dependence_cubic, fig_waterfall, fig_force,
     fig_seasonal_importance, fig_heatmap_hour_month,
     fig_model_comparison, fig_pinball_over_quantiles,
-    fig_bidding_portfolio, fig_interpretable_vs_blackbox, fig_decision_aware, fig_risk_profit,
+    fig_bidding_portfolio, fig_portfolio_diversification, fig_interpretable_vs_blackbox, fig_decision_aware, fig_risk_profit,
     fig_crosssite_forecast_accuracy, fig_crosssite_economic, fig_crosssite_shap_importance,
     fig_crosssite_dependence, fig_crosssite_seasonal, fig_crosssite_bidfailure,
     fig_bidfailure_conditions, fig_bidfailure_heatmap, fig_weather, fig_qr_coefficients,
