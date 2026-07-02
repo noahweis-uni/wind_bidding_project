@@ -148,6 +148,50 @@ def fig_shap_bar():
     plt.suptitle("Globale Feature-Importance (Mittel über 4 Standorte)"); plt.tight_layout()
     save(fig, "shap_bar_importance.png", 150)
 
+def fig_shap_bar_taustar():
+    """Globale SHAP-Feature-Importance fuer QGB bei tau*=0.5429 (Mittel ueber 4 Standorte).
+    Separates Modell (nicht der q50-Median), zusaetzlich fuer NB03 trainiert; siehe
+    shap_qgb_taustar_{plant}.pkl. Nur fuer Interpretierbarkeits-Abschnitt (4.5), nicht Teil
+    der Bidding-Logik (die weiterhin die qbid()-Interpolation q50/q75 nutzt)."""
+    rows = []
+    for s in PLANTS:
+        fp = SHAPD / f"shap_qgb_taustar_{s.lower()}.pkl"
+        if not fp.exists():
+            return
+        with open(fp, "rb") as f:
+            d = pickle.load(f)
+        imp = np.abs(d["shap_values"]).mean(0)
+        for feat, v in zip(d["feature_names"], imp):
+            rows.append({"site": s, "feature": feat, "imp": v})
+    glob = pd.DataFrame(rows).groupby("feature")["imp"].mean().sort_values(ascending=False)
+    top = glob.head(10).sort_values()
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.barh(top.index, top.values, color=MODEL_COLORS["QGB"], edgecolor="black", linewidth=0.4)
+    for i, v in enumerate(top.values):
+        ax.text(v, i, f" {v:.3f}", va="center", fontsize=8)
+    ax.set_xlabel("mean |SHAP|")
+    ax.set_title(r"Globale Feature-Importance – QGB bei $\tau^*$=0,5429 (Mittel über 4 Standorte)")
+    plt.tight_layout()
+    save(fig, "shap_bar_qgb_taustar.png", 150)
+
+
+def fig_beeswarm_qgb_taustar(fs=(12, 8)):
+    """SHAP-Beeswarm fuer QGB bei tau*=0.5429 (Richtung der Feature-Effekte auf das Gebotsquantil).
+    Laedt shap_qgb_taustar_{PP}.pkl direkt (separates tau*-Modell, nicht im Standard-shap_data).
+    Konvention wie die uebrigen Beeswarm-Figuren: Standort PP (Schonungen)."""
+    fp = SHAPD / f"shap_qgb_taustar_{PP.lower()}.pkl"
+    if not fp.exists():
+        return
+    with open(fp, "rb") as f:
+        d = pickle.load(f)
+    np.random.seed(42)  # nur kosmetischer Beeswarm-Jitter -> reproduzierbare PNGs
+    shap.summary_plot(d["shap_values"], np.asarray(d["X"]), feature_names=d["feature_names"],
+                      max_display=15, show=False)
+    fig = plt.gcf(); fig.set_size_inches(*fs)
+    plt.title(f"SHAP Beeswarm – QGB bei $\\tau^*$=0,5429 / {PP}", fontsize=12)
+    plt.tick_params(labelsize=9); plt.tight_layout()
+    save(fig, f"shap_beeswarm_qgb_taustar_{PP.lower()}.png", 200)
+
 def fig_beeswarm(m, fname, fs=(12, 8)):
     np.random.seed(42)  # nur kosmetischer Beeswarm-Jitter -> reproduzierbare PNGs (SHAP-Werte aus NB03 unveraendert)
     d = shap_data[(PP, m)]
@@ -376,6 +420,21 @@ def fig_crosssite_forecast_accuracy():
     plt.suptitle("Forecast-Genauigkeit getrennt: Point (RMSE) | Probabilistic (Pinball)"); plt.tight_layout()
     save(fig, "crosssite_forecast_accuracy.png", 150)
 
+def fig_rmse_point_forecasts():
+    """Eigenstaendige Version des linken Subplots von fig_crosssite_forecast_accuracy:
+    nur RMSE der Punktprognosen (Persistence/ARIMA/Elastic Net) je Standort.
+    Identische Datenberechnung, Farben und Balken-Offsets wie die kombinierte Abbildung."""
+    sites = PLANTS
+    POINT = {"persistence": "Persistence", "arima": "ARIMA", "elastic_net": "Elastic Net"}
+    fig, ax = plt.subplots(figsize=(7, 5)); x = np.arange(len(sites)); wp = 0.25
+    for i, (c, n) in enumerate(POINT.items()):
+        vals = [np.sqrt(np.mean((preds[s][c] - preds[s]["y_true"]) ** 2)) for s in sites]
+        ax.bar(x + (i - 1) * wp, vals, wp, label=n, color=MODEL_COLORS[c])
+    ax.set_xticks(x); ax.set_xticklabels(sites, rotation=15); ax.set_ylabel("RMSE [MWh]")
+    ax.set_title("RMSE je Standort – Point Forecasts"); ax.legend()
+    plt.tight_layout()
+    save(fig, "rmse_point_forecasts.png", 150)
+
 def fig_crosssite_economic():
     br = pd.read_csv(TAB / "bidding_results.csv"); e = _econ_best_per_base(br)
     best = e.groupby(["scenario", "base"])["mean_nv_loss"].min().reset_index()
@@ -587,7 +646,7 @@ def fig_qr_coefficients():
 
 ALL = [
     fig_forecast_vs_actual, fig_forecast_bands, fig_quantile_band_qrf, fig_pinball_single, fig_scatter,
-    fig_shap_bar,
+    fig_shap_bar, fig_shap_bar_taustar, fig_beeswarm_qgb_taustar,
     lambda: fig_beeswarm("qgb", f"shap_beeswarm_qgb_{PP.lower()}.png", (12, 8)),
     lambda: fig_beeswarm("qgb", f"shap_beeswarm_featured_qgb_{PP.lower()}.png", (12, 9)),
     lambda: fig_beeswarm("qrf", f"shap_beeswarm_qrf_{PP.lower()}.png", (12, 8)),
@@ -596,7 +655,7 @@ ALL = [
     fig_seasonal_importance, fig_heatmap_hour_month,
     fig_model_comparison, fig_pinball_over_quantiles,
     fig_bidding_portfolio, fig_portfolio_diversification, fig_interpretable_vs_blackbox, fig_decision_aware, fig_risk_profit,
-    fig_crosssite_forecast_accuracy, fig_crosssite_economic, fig_crosssite_shap_importance,
+    fig_crosssite_forecast_accuracy, fig_rmse_point_forecasts, fig_crosssite_economic, fig_crosssite_shap_importance,
     fig_crosssite_dependence, fig_crosssite_seasonal, fig_crosssite_bidfailure,
     fig_bidfailure_conditions, fig_bidfailure_heatmap, fig_weather, fig_qr_coefficients,
 ]
