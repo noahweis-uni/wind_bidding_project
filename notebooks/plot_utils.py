@@ -66,3 +66,58 @@ def apply_style():
         "savefig.dpi": 150,
         "savefig.bbox": "tight",
     })
+
+def get_model_color(model_name):
+    """
+    Gibt die passende Modellfarbe aus der zentralen CRISP-DM-Farbpalette zurück.
+
+    Funktioniert auch robust bei Modellnamen wie:
+    - "xgb", "xgb_q50", "XGBoost", "Quantile XGBoost"
+    - "qgb", "QGB"
+    - "qrf", "QRF", "qrf_q50"
+    - "qr", "Quantile_Regression"
+    - "elastic_net", "Elastic_Net"
+    - "persistence", "Persistence 24h"
+    """
+
+    name = str(model_name).lower().replace("-", "_").replace(" ", "_")
+
+    if "oracle" in name:
+        return CRISP_COLORS["yellow"]
+
+    if "persistence" in name:
+        return CRISP_COLORS["gray"]
+
+    if "arima" in name:
+        return CRISP_COLORS["light"]
+
+    if "elastic" in name or name in ["en", "elastic_net"]:
+        return CRISP_COLORS["green"]
+
+    if "quantile_regression" in name or name == "qr" or name.startswith("qr_"):
+        return CRISP_COLORS["purple"]
+
+    if "qgb" in name or "quantile_gradient_boosting" in name:
+        return CRISP_COLORS["primary"]
+
+    if "qrf" in name or "quantile_random_forest" in name:
+        return CRISP_COLORS["secondary"]
+
+    if "xgb" in name or "xgboost" in name:
+        return CRISP_COLORS["orange"]
+
+    if "gradient_boosting" in name:
+        return CRISP_COLORS["primary"]
+
+    if "random_forest" in name:
+        return CRISP_COLORS["secondary"]
+
+    return CRISP_COLORS["gray"]
+
+
+def get_site_color(site_name):
+    """
+    Gibt die passende Standortfarbe zurück.
+    Falls der Standort unbekannt ist, wird Grau verwendet.
+    """
+    return SITE_COLORS.get(str(site_name), CRISP_COLORS["gray"])
