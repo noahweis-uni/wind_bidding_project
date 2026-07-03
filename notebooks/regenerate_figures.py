@@ -572,8 +572,8 @@ def fig_bidfailure_conditions_04():
     """Fehlschlag vs. Normalbetrieb fuer Windgeschwindigkeit und Quantil-Spread (Violin)."""
     df = _bidfailure_frame()
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    panels = [("nwp_ws100", "Windgeschwindigkeit [m/s]", (7.5, 4.8)),
-              ("q_spread_qgb", "Quantil-Spread $q_{90}-q_{10}$", (1.58, 0.77))]
+    panels = [("nwp_ws100", "Windgeschwindigkeit [m/s]", (8.0, 4.7)),
+              ("q_spread_qgb", "Quantil-Spread $q_{90}-q_{10}$", (1.42, 0.77))]
     for ax, (col, ylabel, ref) in zip(axes, panels):
         fail_v = df.loc[df["fail"], col].dropna().values
         norm_v = df.loc[~df["fail"], col].dropna().values
