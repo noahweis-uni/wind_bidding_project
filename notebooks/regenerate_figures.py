@@ -549,6 +549,85 @@ def fig_bidfailure_heatmap():
     fig.suptitle("Gebotsverlust (NV-Loss) über Stunde × Monat"); plt.tight_layout()
     save(fig, f"bid_failure_heatmap_{PP.lower()}.png", 150)
 
+# ================= Bid-Failure-Analyse (04_Evaluation) =================
+_FAIL_C, _NORM_C = "#E53935", "#9E9E9E"
+
+def _bidfailure_frame():
+    """Gepoolter QGB/QR-Bidding-Detail + NWP-Wind je Stunde. Fehlschlag-Flag =
+    top 5%% QGB-NV-Loss PRO Standort, dann ueber alle vier Standorte aggregiert."""
+    frames = []
+    for s in PLANTS:
+        det = pd.read_csv(FC / f"bidding_detail_{s.lower()}.csv", parse_dates=["timestamp"])
+        qgb = (det[det["model"] == "QGB"][["timestamp", "y_true", "bid", "nv_loss", "q_spread"]]
+               .rename(columns={"bid": "bid_qgb", "nv_loss": "nv_loss_qgb", "q_spread": "q_spread_qgb"}))
+        qr = det[det["model"] == "QR"][["timestamp", "nv_loss"]].rename(columns={"nv_loss": "nv_loss_qr"})
+        m = qgb.merge(qr, on="timestamp", how="left")
+        nwp = pd.read_csv(NWP / f"nwp_{s.lower()}.csv", parse_dates=["timestamp"])[["timestamp", "nwp_ws100"]]
+        m = m.merge(nwp, on="timestamp", how="left"); m["site"] = s
+        m["fail"] = m["nv_loss_qgb"] >= m["nv_loss_qgb"].quantile(0.95)   # Fehlschlag-Schwelle pro Standort
+        frames.append(m)
+    return pd.concat(frames, ignore_index=True)
+
+def fig_bidfailure_conditions_04():
+    """Fehlschlag vs. Normalbetrieb fuer Windgeschwindigkeit und Quantil-Spread (Violin)."""
+    df = _bidfailure_frame()
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    panels = [("nwp_ws100", "Windgeschwindigkeit [m/s]", (7.5, 4.8)),
+              ("q_spread_qgb", "Quantil-Spread $q_{90}-q_{10}$", (1.58, 0.77))]
+    for ax, (col, ylabel, ref) in zip(axes, panels):
+        fail_v = df.loc[df["fail"], col].dropna().values
+        norm_v = df.loc[~df["fail"], col].dropna().values
+        parts = ax.violinplot([fail_v, norm_v], showmedians=True, showextrema=False)
+        for pc, c in zip(parts["bodies"], [_FAIL_C, _NORM_C]):
+            pc.set_facecolor(c); pc.set_alpha(0.6); pc.set_edgecolor("black"); pc.set_linewidth(0.5)
+        parts["cmedians"].set_color("black")
+        ax.axhline(ref[0], ls="--", lw=1, color=_FAIL_C)   # Referenz Fehlschlag
+        ax.axhline(ref[1], ls="--", lw=1, color=_NORM_C)   # Referenz Normal
+        ax.set_xticks([1, 2]); ax.set_xticklabels(["Fehlschlag", "Normal"])
+        ax.set_ylabel(ylabel)
+        # Robuste y-Grenze (langer Rechts-Tail sonst unlesbar)
+        ax.set_ylim(0, np.nanpercentile(df[col], 99.5))
+    plt.tight_layout()
+    save(fig, "bidfailure_conditions.png", 150)
+
+def fig_bidfailure_heatmap_04():
+    """Stunde-x-Monat-Heatmap des mittleren QGB-NV-Loss NUR in Fehlschlagstunden."""
+    df = _bidfailure_frame()
+    f = df[df["fail"]].copy()
+    f["hour"] = f["timestamp"].dt.hour; f["month"] = f["timestamp"].dt.month
+    grid = (f.groupby(["hour", "month"])["nv_loss_qgb"].mean()
+              .unstack("month").reindex(index=range(24), columns=range(1, 13)))
+    masked = np.ma.masked_invalid(grid.values)   # leere Zellen -> NaN maskiert (nicht 0)
+    cmap = plt.get_cmap("YlOrRd").copy(); cmap.set_bad(color="#EEEEEE")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    im = ax.imshow(masked, aspect="auto", origin="lower", cmap=cmap)
+    ax.set_xticks(range(12)); ax.set_xticklabels(MONTH_NAMES_DE)
+    ax.set_yticks(range(0, 24, 2)); ax.set_yticklabels(range(0, 24, 2))
+    ax.set_xlabel("Monat"); ax.set_ylabel("Stunde des Tages")
+    plt.colorbar(im, ax=ax, label="mittlerer NV-Loss (Fehlschlagstunden) [EUR/MWh]")
+    plt.tight_layout()
+    save(fig, "bidfailure_heatmap.png", 150)
+
+def fig_bidfailure_wind_class():
+    """Mittlerer NV-Loss je Windklasse fuer QGB und QR (alle Stunden, identische Stunden je Modell)."""
+    df = _bidfailure_frame()
+    bins = [0, 6, 12, 18, 100]; labels = ["<6", "6-12", "12-18", ">18"]
+    df["wclass"] = pd.cut(df["nwp_ws100"], bins, labels=labels)
+    g = df.groupby("wclass", observed=True)[["nv_loss_qgb", "nv_loss_qr"]].mean().reindex(labels)
+    x = np.arange(len(labels)); w = 0.38
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.bar(x - w/2, g["nv_loss_qgb"], w, label="QGB", color=MODEL_COLORS["QGB"], edgecolor="black", linewidth=0.4)
+    ax.bar(x + w/2, g["nv_loss_qr"], w, label="QR", color=MODEL_COLORS["QR"], edgecolor="black", linewidth=0.4)
+    ax.set_yscale("log")
+    ax.set_xticks(x); ax.set_xticklabels([f"{l} m/s" for l in labels])
+    ax.set_xlabel("Windgeschwindigkeitsklasse (nwp_ws100)"); ax.set_ylabel("NV-Loss [EUR/MWh]")
+    ax.legend()
+    for xi, (vq, vr) in enumerate(zip(g["nv_loss_qgb"], g["nv_loss_qr"])):
+        ax.text(xi - w/2, vq, f"{vq:.1f}", ha="center", va="bottom", fontsize=8)
+        ax.text(xi + w/2, vr, f"{vr:.1f}", ha="center", va="bottom", fontsize=8)
+    plt.tight_layout()
+    save(fig, "bidfailure_wind_class.png", 150)
+
 # ================= NB01 weather =================
 def fig_weather():
     nwp_sites = {}
@@ -658,6 +737,7 @@ ALL = [
     fig_crosssite_forecast_accuracy, fig_rmse_point_forecasts, fig_crosssite_economic, fig_crosssite_shap_importance,
     fig_crosssite_dependence, fig_crosssite_seasonal, fig_crosssite_bidfailure,
     fig_bidfailure_conditions, fig_bidfailure_heatmap, fig_weather, fig_qr_coefficients,
+    fig_bidfailure_conditions_04, fig_bidfailure_heatmap_04, fig_bidfailure_wind_class,
 ]
 
 if __name__ == "__main__":
