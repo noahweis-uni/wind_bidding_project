@@ -149,7 +149,7 @@ def fig_shap_bar():
     save(fig, "shap_bar_importance.png", 150)
 
 def fig_shap_bar_taustar():
-    """Globale SHAP-Feature-Importance fuer QGB bei tau*=0.5429 (Mittel ueber 4 Standorte).
+    """Globale SHAP-Feature-Importance fuer QGB bei tau*=0.4571 (Mittel ueber 4 Standorte).
     Separates Modell (nicht der q50-Median), zusaetzlich fuer NB03 trainiert; siehe
     shap_qgb_taustar_{plant}.pkl. Nur fuer Interpretierbarkeits-Abschnitt (4.5), nicht Teil
     der Bidding-Logik (die weiterhin die qbid()-Interpolation q50/q75 nutzt)."""
@@ -170,13 +170,13 @@ def fig_shap_bar_taustar():
     for i, v in enumerate(top.values):
         ax.text(v, i, f" {v:.3f}", va="center", fontsize=8)
     ax.set_xlabel("mean |SHAP|")
-    ax.set_title(r"Globale Feature-Importance – QGB bei $\tau^*$=0,5429 (Mittel über 4 Standorte)")
+    ax.set_title(r"Globale Feature-Importance – QGB bei $\tau^*$=0,4571 (Mittel über 4 Standorte)")
     plt.tight_layout()
     save(fig, "shap_bar_qgb_taustar.png", 150)
 
 
 def fig_beeswarm_qgb_taustar(fs=(12, 8)):
-    """SHAP-Beeswarm fuer QGB bei tau*=0.5429 (Richtung der Feature-Effekte auf das Gebotsquantil).
+    """SHAP-Beeswarm fuer QGB bei tau*=0.4571 (Richtung der Feature-Effekte auf das Gebotsquantil).
     Laedt shap_qgb_taustar_{PP}.pkl direkt (separates tau*-Modell, nicht im Standard-shap_data).
     Konvention wie die uebrigen Beeswarm-Figuren: Standort PP (Schonungen)."""
     fp = SHAPD / f"shap_qgb_taustar_{PP.lower()}.pkl"
@@ -188,7 +188,7 @@ def fig_beeswarm_qgb_taustar(fs=(12, 8)):
     shap.summary_plot(d["shap_values"], np.asarray(d["X"]), feature_names=d["feature_names"],
                       max_display=15, show=False)
     fig = plt.gcf(); fig.set_size_inches(*fs)
-    plt.title(f"SHAP Beeswarm – QGB bei $\\tau^*$=0,5429 / {PP}", fontsize=12)
+    plt.title(f"SHAP Beeswarm – QGB bei $\\tau^*$=0,4571 / {PP}", fontsize=12)
     plt.tick_params(labelsize=9); plt.tight_layout()
     save(fig, f"shap_beeswarm_qgb_taustar_{PP.lower()}.png", 200)
 
