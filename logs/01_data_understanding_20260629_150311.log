@@ -1,0 +1,16 @@
+Notebook: 01_data_understanding.ipynb
+Description: Data Understanding (Exploration)
+Started: 2026-06-29T15:03:11.058888
+======================================================================
+
+STDERR:
+[NbConvertApp] Converting notebook C:\Users\felix\Documents\AI1\wind_bidding_project\notebooks\01_data_understanding.ipynb to notebook
+C:\Users\felix\AppData\Roaming\Python\Python312\site-packages\zmq\_future.py:718: RuntimeWarning: Proactor event loop does not implement add_reader family of methods required for zmq. Registering an additional selector thread for add_reader support via tornado. Use `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` to avoid this warning.
+  self._get_loop()
+[NbConvertApp] Writing 463380 bytes to C:\Users\felix\Documents\AI1\wind_bidding_project\notebooks\01_data_understanding.ipynb
+
+======================================================================
+
+Status: SUCCESS
+Elapsed: 1163.4s
+Completed: 2026-06-29T15:22:34.503713

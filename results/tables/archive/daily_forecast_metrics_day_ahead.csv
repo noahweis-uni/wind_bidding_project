@@ -1,0 +1,8 @@
+Modell,Tägl. MAE,Tägl. RMSE
+Gradient Boosting,23.58,31.21
+Elastic Net,23.47,31.73
+Random Forest,24.03,31.77
+QRF q50,23.3,33.14
+QNN q50,22.45,33.48
+QGB q50,22.82,33.9
+Persistence (Gate),28.56,41.57

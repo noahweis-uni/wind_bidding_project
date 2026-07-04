@@ -1,0 +1,16 @@
+Notebook: 02_preprocessing.ipynb
+Description: Preprocessing (NWP Download + Feature Engineering)
+Started: 2026-06-28T23:59:34.563940
+======================================================================
+
+STDERR:
+[NbConvertApp] Converting notebook C:\Users\felix\Documents\AI1\wind_bidding_project\notebooks\02_preprocessing.ipynb to notebook
+C:\Users\felix\Documents\AI1\.venv\Lib\site-packages\zmq\_future.py:718: RuntimeWarning: Proactor event loop does not implement add_reader family of methods required for zmq. Registering an additional selector thread for add_reader support via tornado. Use `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` to avoid this warning.
+  self._get_loop()
+[NbConvertApp] Writing 26539 bytes to C:\Users\felix\Documents\AI1\wind_bidding_project\notebooks\02_preprocessing.ipynb
+
+======================================================================
+
+Status: SUCCESS
+Elapsed: 810.0s
+Completed: 2026-06-29T00:13:04.593726

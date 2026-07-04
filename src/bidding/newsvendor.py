@@ -9,7 +9,9 @@
 #   c_over  = E[max(p_DA - p_reBAP, 0)]  → Überdeckung teuer wenn DA > reBAP
 #
 # Schicht 3 – Optimales Quantil:
-#   τ* = c_under / (c_under + c_over)
+#   Minimierung von E[L] (Schicht 2) ergibt F(b*) = c_over / (c_under + c_over).
+#   Herleitung: dE[L]/db = c_under·F(b) − c_over·(1−F(b)) = 0.
+#   τ* = c_over / (c_under + c_over)
 # -------------------------------------------------------
 
 import numpy as np
@@ -30,8 +32,15 @@ def compute_costs(p_da: np.ndarray, p_rebap: np.ndarray) -> tuple[float, float]:
 
 
 def optimal_quantile(c_under: float, c_over: float) -> float:
-    """τ* = c_under / (c_under + c_over)"""
-    return c_under / (c_under + c_over)
+    """
+    Kostenoptimales Gebotsquantil des Newsvendor-Problems.
+
+    Minimierung von E[L] mit L = c_under·(b-y)+ + c_over·(y-b)+ liefert
+    F(b*) = c_over / (c_under + c_over). Ist Unterdeckung teurer
+    (c_under > c_over), so ist tau* < 0.5: konservativ *unter* dem Median
+    bieten, um die teure Untereinspeisung selten zu machen.
+    """
+    return c_over / (c_under + c_over)
 
 
 def loss(b: np.ndarray, y: np.ndarray,

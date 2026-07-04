@@ -43,4 +43,18 @@ __pycache__/
 *.pyc
 
 results/models/*.joblib
-results/models/*.joblib
+
+# Claude Code internal settings
+.claude/
+
+# Rohdaten (groß, nicht ins Repo)
+data/raw/weather/
+data/raw/satellite/
+data/raw/nwp/
+
+# CDS/ADS API-Keys (außerhalb des Projekts in ~/.cdsapirc / ~/.adsapirc)
+.cdsapirc
+.adsapirc
+
+# Grosse abgeleitete Feature-CSVs (regenerierbar aus final_dataset)
+data/processed/features_*.csv
